@@ -1,0 +1,49 @@
+{
+    "name": "SG Development Environment",
+    "dockerComposeFile": "../docker/docker-compose.yml",
+    "service": "dev",
+    "workspaceFolder": "/workspace",
+    "containerEnv": {
+      "TZ": "Asia/Seoul",
+      "PYTHONPATH": "${containerWorkspaceFolder}"
+    },
+    "features": {
+      "ghcr.io/devcontainers/features/common-utils:2": {
+        "configureZshAsDefaultShell": true,
+        "username": "sg"
+      }
+    },
+    "customizations": {
+      "vscode": {
+        "extensions": [
+          "christian-kohler.path-intellisense",
+          "davidanson.vscode-markdownlint",
+          "editorconfig.editorconfig",
+          "esbenp.prettier-vscode",
+          "GitHub.copilot",
+          "github.vscode-github-actions",
+          "github.vscode-pull-request-github",
+          "ms-azuretools.vscode-docker",
+          "ms-vscode.makefile-tools",
+          "njpwerner.autodocstring",
+          "redhat.vscode-yaml",
+          "ryanluker.vscode-coverage-gutters",
+          "streetsidesoftware.code-spell-checker",
+          "VisualStudioExptTeam.vscodeintellicode",
+          "ms-python.python",
+          "ms-python.flake8",
+          "ms-python.black-formatter"
+        ],
+        "settings": {
+          "python.defaultInterpreterPath": "/opt/conda/bin/python",
+          "[python]": {
+            "editor.defaultFormatter": "ms-python.black-formatter",
+            "editor.formatOnSave": true
+          }
+
+        }
+      }
+    },
+    "remoteUser": "sg",
+    "postCreateCommand": "bash install_incl.sh" // TODO: Should be removed
+  }

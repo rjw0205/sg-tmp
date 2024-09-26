@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: sg-dev
+    volumes:
+      - ..:/workspace
+      - /lunit/data/onco:/lunit/data/onco # TODO: Should be removed
+      - /storage4:/storage4 # TODO: Should be removed
+      - /storage5:/storage5 # TODO: Should be removed
+      - /storage6:/storage6 # TODO: Should be removed
+    network_mode: "host"
+    ipc: "host"
+    working_dir: /workspace
+    command: sleep infinity
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            capabilities: [gpu]
