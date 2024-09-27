@@ -5,7 +5,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: sg-dev
+    container_name: ${USER_NAME}-sg-dev
+    env_file: .env
     volumes:
       - ..:/workspace
       - /lunit/data/onco:/lunit/data/onco # TODO: Should be removed
