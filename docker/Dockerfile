@@ -21,7 +21,7 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
 
 # Install Google Cloud CLI
 RUN curl https://sdk.cloud.google.com > install.sh && \
-    bash install.sh --disable-prompts && \
+    bash install.sh --disable-prompts --install-dir=/ && \
     rm install.sh
 
 # Install Python dependencies using pip
