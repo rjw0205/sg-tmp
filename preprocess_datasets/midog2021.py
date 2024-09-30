@@ -11,7 +11,7 @@ from shapely.wkt import dumps
 
 
 ROOT_PATH = "/storage6/pp/share/rjw0205/scanner_generalization/paper_submission/MIDOG_2021"
-SAVE_PATH = "midog_2021_patches"
+SAVE_PATH = "/lunit/data/midog_2021_patches"
 PATCH_SIZE = 512
 STEP_SIZE = 256
 
@@ -88,17 +88,19 @@ def extract_patches_and_labels_from_slide(sld_path, annotation):
             # Save label as .wkt file
             with open(f"{save_name}.wkt", "w") as f:
                 for cell in annotation:
-                    cell_x_coord = int((cell["bbox"][0] + cell["bbox"][2]) // 2)
-                    cell_y_coord = int((cell["bbox"][1] + cell["bbox"][3]) // 2)
-                    cell_label = cell["category_id"]
-                    if (start_x <= cell_x_coord < start_x + PATCH_SIZE) and (start_y <= cell_y_coord < start_y + PATCH_SIZE):
-                        f.write(f"POINT ({cell_x_coord} {cell_y_coord})|{cell_label}" + "\n")
-                        if cell_label == 1:
+                    x_coord = int((cell["bbox"][0] + cell["bbox"][2]) // 2)
+                    y_coord = int((cell["bbox"][1] + cell["bbox"][3]) // 2)
+                    rel_x_coord = x_coord - start_x
+                    rel_y_coord = y_coord - start_y
+                    if (0 <= rel_x_coord < PATCH_SIZE) and (0 <= rel_y_coord < PATCH_SIZE):
+                        category = cell["category_id"]
+                        f.write(f"POINT ({rel_x_coord} {rel_y_coord})|{category}" + "\n")
+                        if category == 1:
                             metadata[save_name]["num_mitotic_figure"] += 1
-                        elif cell_label == 2:
+                        elif category == 2:
                             metadata[save_name]["num_non_mitotic_figure"] += 1
                         else:
-                            raise ValueError(f"Cell label should be either 1 or 2, but {cell_label}.")
+                            raise ValueError(f"Cell label should be either 1 or 2, but {category}.")
 
     print(f"Done {Path(sld_path).name}")
     return metadata
