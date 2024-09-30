@@ -25,8 +25,14 @@ def _parse_annotation(json_path):
     result = {}
     for image in images:
         file_name = image["file_name"]
-        image_id = image["id"]
-        result[file_name] = [annot for annot in annotations if annot["image_id"] == image_id]
+        img_id = image["id"]
+
+        # Based on MIDOG2021 dataset discription, 151~200.tiff are not labeled.
+        # ref: https://imig.science/midog2021/download-dataset/
+        if 151 <= img_id <= 200:
+            result[file_name] = "N/A"
+        else:
+            result[file_name] = [annot for annot in annotations if annot["image_id"] == img_id]
 
     return result
 
@@ -65,15 +71,21 @@ def extract_patches_and_labels_from_slide(sld_path, annotation):
             roi.save(f"{save_name}.jpg", "JPEG")
 
             # Prepare metadata contains cell count information
+            is_annotated = (annotation != "N/A")
             metadata[save_name] = {
                 "slide_id": sld_idx,
                 "patch_id": f"x_{start_x}_y_{start_y}_size_{PATCH_SIZE}",
                 "scanner": scanner,
+                "is_annotated": is_annotated,
                 "num_mitotic_figure": 0, 
                 "num_non_mitotic_figure": 0,
             }
 
-            # Save label as wkt file
+            # Do not create .wkt file for 151~200.tiff
+            if not is_annotated:
+                continue
+
+            # Save label as .wkt file
             with open(f"{save_name}.wkt", "w") as f:
                 for cell in annotation:
                     cell_x_coord = int((cell["bbox"][0] + cell["bbox"][2]) // 2)
