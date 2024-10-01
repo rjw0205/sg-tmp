@@ -62,8 +62,8 @@ def extract_patches_and_labels_from_slide(sld_path, annotation):
     width, height = sld.dimensions
 
     metadata = {}
-    for start_x in range(0, width - STEP_SIZE + 1, STEP_SIZE):
-        for start_y in range(0, height - STEP_SIZE + 1, STEP_SIZE):
+    for start_x in range(0, width - PATCH_SIZE + 1, STEP_SIZE):
+        for start_y in range(0, height - PATCH_SIZE + 1, STEP_SIZE):
             # Save patch
             save_name = f"{SAVE_PATH}/{scanner}/{sld_idx}/x_{start_x}_y_{start_y}_size_{PATCH_SIZE}"
             roi = sld.read_region((start_x, start_y), 0, (PATCH_SIZE, PATCH_SIZE))
