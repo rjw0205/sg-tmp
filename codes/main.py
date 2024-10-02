@@ -27,11 +27,15 @@ val_loader = DataLoader(val_dataset, batch_size=bs, shuffle=False, collate_fn=mi
 # Instantiate model, loss, and lightning module
 model = YourPredefinedSegmentationModel()  # TODO
 loss = torch.nn.CrossEntropyLoss()  # TODO
-lightning_model = SegmentationModel(model, criterion)
+lightning_model = SegmentationModel(model, loss)
 
 # Define the trainer and start training
-trainer = Trainer(max_epochs=10, gpus=1)  # Use gpus if available
-trainer.fit(lightning_model, train_loader, val_loader)
+trainer = Trainer(
+    max_epochs=10, 
+    check_val_every_n_epoch=5,
+    gpus=1,
+)
+trainer.fit(lightning_model, trn_loader, val_loader)
 
 # Evaluation
 trainer.validate(lightning_model, val_loader)
