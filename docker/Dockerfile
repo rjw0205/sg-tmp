@@ -11,7 +11,10 @@ RUN apt-get update && \
     git \
     wget \
     curl \
-    vim
+    vim \
+    ffmpeg \
+    libsm6 \
+    libxext6
 
 # Install zsh
 RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v1.2.0/zsh-in-docker.sh)" -- \

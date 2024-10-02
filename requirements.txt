@@ -1,3 +1,5 @@
 pytorch-lightning
 openslide-python
 shapely
+opencv-python
+albumentations
