@@ -22,7 +22,7 @@ class MIDOG2021Dataset(Dataset):
         training, 
         do_fda=False,
         fda_beta_start=0.001, 
-        fda_beta_end=0.1, 
+        fda_beta_end=0.01, 
         radius=15,
     ):
         assert os.path.exists(root_path), f"{root_path} does not exist."
@@ -30,7 +30,7 @@ class MIDOG2021Dataset(Dataset):
         assert isinstance(training, bool)
         assert isinstance(fda_beta_start, float)
         assert isinstance(fda_beta_end, float)
-        assert 0.0 < fda_beta_start <= fda_beta_end <= 1.0
+        assert 0.0 < fda_beta_start <= fda_beta_end <= 0.5
 
         self.root_path = root_path
         self.scanners = scanners
@@ -83,12 +83,17 @@ class MIDOG2021Dataset(Dataset):
         )
 
     def random_fda(self, src_img, src_scanner):
+        # Randomly choose scanner to be used for FDA
         candidate_scanners = [s for s in self.scanners if s != src_scanner]
         tgt_scanner = random.choice(candidate_scanners)
+
+        # Randomly choose img for FDA from selected scanner
         tgt_img_path = random.choice(self.img_paths_per_scanner[tgt_scanner])
-        print(tgt_img_path)
         tgt_img = read_img(tgt_img_path)
-        fda_img = fda_augmentation(src_img, tgt_img, channel="V", L=0.01)
+
+        # Perform FDA
+        L = np.random.uniform(self.fda_beta_start, self.fda_beta_end)
+        fda_img = fda_augmentation(src_img, tgt_img, channel="V", L=L)
         return fda_img
 
     def __len__(self):
@@ -96,7 +101,6 @@ class MIDOG2021Dataset(Dataset):
 
     def __getitem__(self, index):
         img_path = self.img_paths[index]
-        print(img_path)
         wkt_path = img_path.replace(".jpg", ".wkt")
 
         # Read image and create FDA image
