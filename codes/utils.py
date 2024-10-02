@@ -1,7 +1,23 @@
 import cv2
 import torch
+import numpy as np
 import shapely.wkt as wkt
 from skimage import draw
+from PIL import Image
+
+
+def save_img_from_numpy_array(arr, save_name):
+    """ Save image from numpy array (HxWxC)
+
+    Parameters
+    ----------
+    arr: np.ndarray
+        An array to be saved as an image.
+    save_name: str
+        Image name to be saved.
+    """
+    img = Image.fromarray(arr)
+    img.save(save_name)
 
 
 def read_img(img_path):

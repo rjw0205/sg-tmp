@@ -1,12 +1,17 @@
 import os
 import glob
 import torch
+import random
 import pickle
+
 import numpy as np
 import albumentations as A
+
 from albumentations.pytorch import ToTensorV2
-from utils import read_img, parse_wkt_annotation, draw_segmentation_label
 from torch.utils.data import Dataset, DataLoader, default_collate
+
+from codes.fda import fda_augmentation
+from codes.utils import read_img, parse_wkt_annotation, draw_segmentation_label
 
 
 class MIDOG2021Dataset(Dataset):
@@ -39,7 +44,6 @@ class MIDOG2021Dataset(Dataset):
         self.img_paths_per_scanner = self.get_img_paths_per_scanner(root_path)
         self.metadata = self.get_metadata(root_path)
         self.transform = self.get_transforms()
-        self.wkt_paths = [path.replace(".jpg", ".wkt") for path in self.img_paths]
 
     def get_img_paths(self, root_path):
         img_paths = []
@@ -78,17 +82,31 @@ class MIDOG2021Dataset(Dataset):
             keypoint_params=A.KeypointParams(format="xy"),
         )
 
+    def random_fda(self, src_img, src_scanner):
+        candidate_scanners = [s for s in self.scanners if s != src_scanner]
+        tgt_scanner = random.choice(candidate_scanners)
+        tgt_img_path = random.choice(self.img_paths_per_scanner[tgt_scanner])
+        print(tgt_img_path)
+        tgt_img = read_img(tgt_img_path)
+        fda_img = fda_augmentation(src_img, tgt_img, channel="V", L=0.01)
+        return fda_img
+
     def __len__(self):
         return len(self.img_paths)
 
     def __getitem__(self, index):
+        img_path = self.img_paths[index]
+        print(img_path)
+        wkt_path = img_path.replace(".jpg", ".wkt")
+
         # Read image and create FDA image
-        img = read_img(self.img_paths[index])
+        img = read_img(img_path)
         if self.do_fda:
-            fda_img = img.copy()  # TODO: self.random_fda(index, img)
+            src_scanner = self.metadata[img_path.replace(".jpg", "")]["scanner"]
+            fda_img = self.random_fda(img, src_scanner)
 
         # Read wkt annotation
-        gt_points, gt_categories = parse_wkt_annotation(self.wkt_paths[index])
+        gt_points, gt_categories = parse_wkt_annotation(wkt_path)
 
         # Apply transform to image and points
         t = self.transform(image=img, keypoints=gt_points)
@@ -97,24 +115,21 @@ class MIDOG2021Dataset(Dataset):
         # Create a segmentation label
         seg_label = draw_segmentation_label(img, gt_points, gt_categories, self.radius)
 
+        # Output of dataset
+        sample = {
+            "img": img,
+            "seg_label": seg_label, 
+            "gt_points": gt_points, 
+            "gt_categories": gt_categories
+        }
+
         # Apply the same transform to FDA image
         if self.do_fda:
             t_fda = A.ReplayCompose.replay(t["replay"], image=fda_img)
             fda_img = t_fda["image"]
-            return {
-                "img": img,
-                "fda_img": fda_img,
-                "seg_label": seg_label, 
-                "gt_points": gt_points, 
-                "gt_categories": gt_categories
-            }
-        else:
-            return {
-                "img": img,
-                "seg_label": seg_label, 
-                "gt_points": gt_points, 
-                "gt_categories": gt_categories
-            }
+            sample["fda_img"] = fda_img
+
+        return sample
 
 
 def midog_collate_fn(batch):
@@ -145,7 +160,7 @@ if __name__ == "__main__":
     scanners = ["Aperio_CS2", "Hamamatsu_S360", "Hamamatsu_XR"]
     training = True
     do_fda = True
-    batch_size = 4
+    batch_size = 1
 
     # Sanity check
     dataset = MIDOG2021Dataset(root_path, scanners, training, do_fda)
