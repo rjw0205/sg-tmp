@@ -49,6 +49,6 @@ def swap_amplitude(src_channel, tgt_channel, L):
 
     # get the mutated image
     src_channel = np.fft.ifft2(fft_src)
-    src_channel = np.clip(src_channel, 0, 255).astype(np.uint8)
+    src_channel = np.clip(np.real(src_channel), 0, 255).astype(np.uint8)
 
     return src_channel

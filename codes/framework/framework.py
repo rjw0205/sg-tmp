@@ -1,17 +1,69 @@
 import torch
 import pytorch_lightning as pl
 import torch.nn.functional as F
+from torch.utils.data import DataLoader, Subset
+from codes.dataset.midog2021_dataset import midog_collate_fn
 
-class SegmentationModel(pl.LightningModule):
-    def __init__(self, model, supervised_loss, consistency_loss, lr):
-        super(SegmentationModel, self).__init__()
+
+class FDASegmentationModule(pl.LightningModule):
+    def __init__(
+        self, 
+        model, 
+        trn_dataset, 
+        val_dataset, 
+        batch_size,
+        num_workers,
+        supervised_loss, 
+        consistency_loss, 
+        lr,
+        subset_size=1000,
+    ):
+        super(FDASegmentationModule, self).__init__()
         self.model = model
+        self.trn_dataset = trn_dataset
+        self.val_dataset = val_dataset
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.subset_size = subset_size
         self.supervised_loss = supervised_loss
         self.consistency_loss = consistency_loss
         self.lr = lr
+
+    def subsample_trn_dataset(self):
+        # Subsample new indices at the start of each training epoch
+        indices = torch.randperm(len(self.trn_dataset))[:self.subset_size]
+        self.trn_subset = Subset(self.trn_dataset, indices)
+
+    def on_fit_start(self):
+        # Subsample before the first epoch
+        self.subsample_trn_dataset()
+
+    def on_train_epoch_start(self):
+        # Subsample for every train epoch, including after the first one
+        self.subsample_trn_dataset()
+
+    def train_dataloader(self):
+        # Use the subsampled training dataset
+        return DataLoader(
+            self.trn_subset,
+            batch_size=self.batch_size,
+            shuffle=True, 
+            collate_fn=midog_collate_fn,
+            num_workers=self.num_workers,
+        )
+
+    def val_dataloader(self):
+        # Use the full validation dataset (no subsampling)
+        return DataLoader(
+            self.val_dataset, 
+            batch_size=self.batch_size,
+            shuffle=False, 
+            collate_fn=midog_collate_fn,
+            num_workers=self.num_workers,
+        )
     
-    def forward(self, x, fda_x):
-        return self.model(x)
+    def forward(self, x):
+        return self.model(x)["out"]
 
     def training_step(self, batch, batch_idx):
         imgs_dict, seg_labels, gt_points, gt_categories = batch
@@ -30,8 +82,8 @@ class SegmentationModel(pl.LightningModule):
             consistency_loss = torch.tensor(0.0)
 
         # Log loss
-        self.log("train_supervised_loss", supervised_loss)
-        self.log("train_consistency_loss", consistency_loss)
+        self.log("train_supervised_loss", supervised_loss, sync_dist=True)
+        self.log("train_consistency_loss", consistency_loss, sync_dist=True)
 
         # Return losses
         return {
@@ -48,8 +100,11 @@ class SegmentationModel(pl.LightningModule):
         preds = self.forward(imgs)
         supervised_loss = self.supervised_loss(preds, seg_labels)
 
-        self.log("val_supervised_loss", supervised_loss)
-        return val_loss
+        self.log("val_supervised_loss", supervised_loss, sync_dist=True)
+        return {
+            "loss": supervised_loss,
+            "supervised_loss": supervised_loss,
+        }
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
