@@ -20,7 +20,7 @@ class MIDOG2021Dataset(Dataset):
         root_path, 
         scanners, 
         training, 
-        do_fda=False,
+        do_fda,
         fda_beta_start=0.001, 
         fda_beta_end=0.01, 
         radius=15,
