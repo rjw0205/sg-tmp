@@ -1,3 +1,4 @@
+import random
 import torch
 import pytorch_lightning as pl
 import torch.nn.functional as F
@@ -30,9 +31,16 @@ class FDASegmentationModule(pl.LightningModule):
         self.lr = lr
 
     def subsample_trn_dataset(self):
-        # Subsample new indices at the start of each training epoch
-        indices = torch.randperm(len(self.trn_dataset))[:self.subset_size]
-        self.trn_subset = Subset(self.trn_dataset, indices)
+        # Subsample new indices for each epoch of training it includes,
+        # - indices which contains cell annotations
+        # - indices which don't have cell annotation (randomly sampled)
+        indices_for_training = []
+        indices_for_training += self.trn_dataset.indices_with_at_least_one_annot
+        indices_for_training += random.sample(
+            self.trn_dataset.indices_with_zero_annot, 
+            len(self.trn_dataset.indices_with_at_least_one_annot)
+        )
+        self.trn_subset = Subset(self.trn_dataset, indices_for_training)
 
     def on_fit_start(self):
         # Subsample before the first epoch

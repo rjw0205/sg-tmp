@@ -44,6 +44,20 @@ class MIDOG2021Dataset(Dataset):
         self.img_paths_per_scanner = self.get_img_paths_per_scanner(root_path)
         self.metadata = self.get_metadata(root_path)
         self.transform = self.get_transforms()
+        self.setup_indices()
+    
+    def setup_indices(self):
+        self.indices_with_zero_annot = []
+        self.indices_with_at_least_one_annot = []
+
+        for i, img_path in enumerate(self.img_paths):
+            meta_key = img_path.replace(".jpg", "")
+            metadata = self.metadata[meta_key]
+            num_valid_cells = metadata["num_mitotic_figure"] + metadata["num_non_mitotic_figure"]
+            if num_valid_cells == 0:
+                self.indices_with_zero_annot.append(i)
+            else:
+                self.indices_with_at_least_one_annot.append(i)
 
     def get_img_paths(self, root_path):
         img_paths = []
