@@ -4,6 +4,7 @@ import numpy as np
 import shapely.wkt as wkt
 from skimage import draw
 from PIL import Image
+from skimage.feature import peak_local_max
 
 
 def save_img_from_numpy_array(arr, save_name):
@@ -90,3 +91,49 @@ def draw_segmentation_label(img, gt_points, gt_categories, radius):
         seg_label[circle_y, circle_x] = int(category)
 
     return seg_label
+
+
+def find_peaks_from_heatmap(arr, min_distance):
+    """ Find peaks from heatmap.
+
+    Parameters
+    ----------
+    arr: torch.tensor
+        An array shape (1 + num_classes, H, W), where 1 denotes Background.
+
+    min_distance: int
+        Minimum distance (pixel) between peaks.
+
+    Returns
+    ------------
+    peaks_coords: np.ndarray (N, 2)
+        Coordinates of peaks.
+    
+    peaks_score: np.ndarray (N,)
+        Score of peaks.
+
+    peaks_class: np.ndarray (N,)
+        Class of peaks
+    """
+    arr = np.array(arr)
+    assert np.all(np.isclose(np.sum(arr, axis=0), 1.0)), "Input arr should be post-softmax."
+
+    # Use background channel for peak finding
+    bkg = arr[0, :, :]
+    obj = 1.0 - bkg
+
+    # Coords are (y, x) order
+    peaks_coords = peak_local_max(obj, min_distance=min_distance)
+    peaks_score = np.max(arr, axis=0)[peaks_coords[:, 0], peaks_coords[:, 1]]
+    peaks_class = np.argmax(arr, axis=0)[peaks_coords[:, 0], peaks_coords[:, 1]]
+
+    # Filter out only mitotic cells (class index 1)
+    is_mitotic_cell = (peaks_class == 1)
+    peaks_coords = peaks_coords[is_mitotic_cell]
+    peaks_score = peaks_score[is_mitotic_cell]
+    peaks_class = peaks_class[is_mitotic_cell]
+
+    if len(peaks_coords) == 0:
+        return np.empty((0, 2)), np.empty((0)), np.empty((0))
+
+    return peaks_coords, peaks_score, peaks_class
