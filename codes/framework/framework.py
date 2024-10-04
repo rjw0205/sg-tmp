@@ -5,8 +5,11 @@ import pytorch_lightning as pl
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Subset
 from codes.dataset.midog2021_dataset import midog_collate_fn
-from codes.utils import find_mitotic_cells_from_heatmap
-from tqdm import tqdm
+from codes.utils import (
+    find_mitotic_cells_from_heatmap, 
+    compute_tp_and_fp, 
+    compute_precision_recall_f1, 
+)
 
 
 class FDASegmentationModule(pl.LightningModule):
@@ -135,7 +138,7 @@ class FDASegmentationModule(pl.LightningModule):
         global_num_tp = 0
         global_num_fp = 0
 
-        for i in tqdm(range(len(self.predictions))):
+        for i in range(len(self.predictions)):
             # Collect num GT
             gt_coords = np.array(self.gt_coords[i])
             num_gt = len(gt_coords)
@@ -143,7 +146,7 @@ class FDASegmentationModule(pl.LightningModule):
 
             # Find mitotic cells from prediction heatmap
             pred = self.predictions[i]
-            pred_coords, pred_score = find_mitotic_cells_from_heatmap(pred)
+            pred_coords, pred_scores = find_mitotic_cells_from_heatmap(pred)
             num_preds = len(pred_coords)
 
             # Calculate TP and FP
@@ -155,31 +158,23 @@ class FDASegmentationModule(pl.LightningModule):
                 global_num_fp += num_preds
                 continue
             else:
-                # Compute distance between GT and predicted cells
-                pred_coords = pred_coords.reshape([-1, 1, 2])
-                gt_coords = gt_coords.reshape([1, -1, 2])
-                distance = np.linalg.norm(pred_coords - gt_coords, axis=2)
-                
-                # Start matching from highest confidence predicted cell
-                sorted_pred_indices = np.argsort(-pred_score)
-                bool_mask = (distance <= self.cut_off)
-
-                num_tp = 0
-                num_fp = 0
-                for pred_idx in sorted_pred_indices:
-                    gt_neighbors = bool_mask[pred_idx].nonzero()[0]
-                    if len(gt_neighbors) == 0:
-                        # No matching GT --> False Positive
-                        num_fp += 1
-                    else:
-                        # Assign nearest GT --> True Positive
-                        gt_idx = min(gt_neighbors, key=lambda gt_idx: distance[pred_idx, gt_idx])
-                        num_tp += 1
-                        bool_mask[:, gt_idx] = False
-                
-                assert num_tp + num_fp == num_preds
+                num_tp, num_fp = compute_tp_and_fp(
+                    pred_coords, 
+                    pred_scores, 
+                    gt_coords, 
+                    self.cut_off,
+                )
                 global_num_tp += num_tp
                 global_num_fp += num_fp
+
+        precision, recall, f1 = compute_precision_recall_f1(
+            global_num_gt, 
+            global_num_tp, 
+            global_num_fp,
+        )
+        self.log("Precision", round(precision, 4), sync_dist=True)
+        self.log("Recall", round(recall, 4), sync_dist=True)
+        self.log("F1", round(f1, 4), sync_dist=True)
 
         # Refresh for next evaluation
         self.predictions = []

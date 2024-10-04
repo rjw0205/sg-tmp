@@ -112,8 +112,8 @@ def find_mitotic_cells_from_heatmap(arr, mitotic_cell_cls_idx=1, min_distance=30
     cell_coords: np.ndarray (N, 2)
         Coordinates of cells.
     
-    cell_score: np.ndarray (N,)
-        Score of cells.
+    cell_scores: np.ndarray (N,)
+        Confidence probility of cells.
     """
     assert isinstance(arr, np.ndarray)
     assert np.all(np.isclose(np.sum(arr, axis=0), 1.0)), "Input arr should be post-softmax."
@@ -124,15 +124,93 @@ def find_mitotic_cells_from_heatmap(arr, mitotic_cell_cls_idx=1, min_distance=30
 
     # Coords are (y, x) order
     cell_coords = peak_local_max(obj, min_distance=min_distance)
-    cell_score = np.max(arr, axis=0)[cell_coords[:, 0], cell_coords[:, 1]]
+    cell_scores = np.max(arr, axis=0)[cell_coords[:, 0], cell_coords[:, 1]]
     cell_cls = np.argmax(arr, axis=0)[cell_coords[:, 0], cell_coords[:, 1]]
 
     # Filter out only mitotic cells (class index 1)
     is_mitotic_cell = (cell_cls == mitotic_cell_cls_idx)
     cell_coords = cell_coords[is_mitotic_cell]
-    cell_score = cell_score[is_mitotic_cell]
+    cell_scores = cell_scores[is_mitotic_cell]
 
     if len(cell_coords) == 0:
         return np.empty((0, 2)), np.empty((0))
 
-    return cell_coords, cell_score
+    return cell_coords, cell_scores
+
+
+def compute_tp_and_fp(pred_coords, pred_scores, gt_coords, distance_cut_off):
+    """ Compute TP and FP from given prediction and GT coordinates.
+
+    Parameters
+    ----------
+    pred_coords: np.ndarray (N, 2)
+        List of predicted cell coordinates. N is number of predictions, 2 corresponds to (y, x).
+
+    pred_scores: np.ndarray (N,)
+        List of cell's confidence score.
+
+    gt_coords: np.ndarray (M, 2)
+        List of GT cell coordinates. M is number of GT, 2 corresponds to (y, x).
+
+    distance_cut_off: int
+        Distance (pixel) threshold which will decided the match between pred and GT cells.
+
+    Returns
+    -------
+    num_tp: int
+        Number of True Positive (TP) detection.
+
+    num_fp: int
+        Number of False Positive (FP) detection.
+    """
+    num_tp, num_fp = 0, 0
+    num_preds = pred_coords.shape[0]
+
+    # Compute distance between GT and predicted cells
+    pred_coords = pred_coords.reshape([-1, 1, 2])
+    gt_coords = gt_coords.reshape([1, -1, 2])
+    distance = np.linalg.norm(pred_coords - gt_coords, axis=2)
+
+    # Start matching from highest confidence predicted cell
+    sorted_pred_indices = np.argsort(-pred_scores)
+    bool_mask = (distance <= distance_cut_off)
+    for pred_idx in sorted_pred_indices:
+        gt_neighbors = bool_mask[pred_idx].nonzero()[0]
+        if len(gt_neighbors) == 0:  # No matching GT --> False Positive
+            num_fp += 1
+        else: # Assign nearest GT --> True Positive
+            gt_idx = min(gt_neighbors, key=lambda gt_idx: distance[pred_idx, gt_idx])
+            num_tp += 1
+            bool_mask[:, gt_idx] = False
+
+    assert num_tp + num_fp == num_preds
+    return num_tp, num_fp
+
+
+def compute_precision_recall_f1(num_gt, num_tp, num_fp, eps=1e-7):
+    """
+
+    Parameters
+    ----------
+    num_gt: int
+        Number of GT cells.
+
+    num_tp: int
+        Number of True Positive (TP) detection.
+
+    num_fp: int
+        Number of False Positive (FP) detection.
+
+    eps: float
+        A very small number to prevent ZeroDivisionError.
+
+    Returns
+    -------
+    precision: float
+    recall: float
+    f1: float
+    """
+    precision = num_tp / (num_tp + num_fp + eps)
+    recall = num_tp / (num_gt + eps)
+    f1 = 2 * precision * recall / (precision + recall + eps)
+    return precision, recall, f1
