@@ -124,22 +124,20 @@ class MIDOG2021Dataset(Dataset):
             fda_img = self.random_fda(img, src_scanner)
 
         # Read wkt annotation
-        gt_points, gt_categories = parse_wkt_annotation(wkt_path)
+        gt_coords, gt_categories = parse_wkt_annotation(wkt_path)
 
         # Apply transform to image and points
-        t = self.transform(image=img, keypoints=gt_points)
-        img, gt_points = t["image"], t["keypoints"]
+        t = self.transform(image=img, keypoints=gt_coords)
+        img, gt_coords = t["image"], t["keypoints"]
 
         # Create a segmentation label
-        seg_label = draw_segmentation_label(img, gt_points, gt_categories, self.radius)
+        seg_label = draw_segmentation_label(img, gt_coords, gt_categories, self.radius)
+
+        # Exclude non-mitotic cells from GT points, which are not used for metric computation.
+        gt_coords = [gt_coord for gt_coord, gt_cls in zip(gt_coords, gt_categories) if gt_cls == 1]
 
         # Output of dataset
-        sample = {
-            "img": img,
-            "seg_label": seg_label, 
-            "gt_points": gt_points, 
-            "gt_categories": gt_categories
-        }
+        sample = {"img": img, "seg_label": seg_label,  "gt_coords": gt_coords}
 
         # Apply the same transform to FDA image
         if self.do_fda:
@@ -166,11 +164,10 @@ def midog_collate_fn(batch):
     seg_labels = [item["seg_label"] for item in batch]
     seg_labels = torch.stack(seg_labels, dim=0)
 
-    # Return GT point and categories as is, since each sample has different number of points
-    gt_points = [item["gt_points"] for item in batch]
-    gt_categories = [item["gt_categories"] for item in batch]
+    # Return GT point as is, since each sample has different number of points
+    gt_coords = [item["gt_coords"] for item in batch]
 
-    return imgs_dict, seg_labels, gt_points, gt_categories
+    return imgs_dict, seg_labels, gt_coords
 
 
 if __name__ == "__main__":
@@ -183,11 +180,10 @@ if __name__ == "__main__":
     # Sanity check
     dataset = MIDOG2021Dataset(root_path, scanners, training, do_fda)
     data_loader = DataLoader(dataset, batch_size=batch_size, collate_fn=midog_collate_fn)
-    for imgs_dict, seg_labels, gt_points, gt_categories in data_loader:
+    for imgs_dict, seg_labels, gt_coords in data_loader:
         print("original img shape:", imgs_dict["original"].shape)
         if do_fda:
             print("FDA img shape:", imgs_dict["fda"].shape)
         print("Segmentation label shape:", seg_labels.shape)
-        print("GT points:", gt_points)
-        print("GT categories:", gt_categories)
+        print("GT coordinates:", gt_coords)
         break

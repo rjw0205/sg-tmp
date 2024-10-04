@@ -48,31 +48,31 @@ def parse_wkt_annotation(wkt_path):
 
     Returns
     -------
-    gt_points: List[Tuple(int, int)]
-        A list of points (x, y).
+    gt_coords: List[Tuple(int, int)]
+        A list of points (y, x).
     gt_categories: List[int]
         A list of category.
     """
-    gt_points = []
+    gt_coords = []
     gt_categories = []
     with open(wkt_path, "r") as f:
         for line in f.read().splitlines():
             point, category = line.split("|")
             point = wkt.loads(point)
-            gt_points.append((int(point.x), int(point.y)))
+            gt_coords.append((int(point.y), int(point.x)))
             gt_categories.append(int(category))
 
-    return gt_points, gt_categories
+    return gt_coords, gt_categories
 
-def draw_segmentation_label(img, gt_points, gt_categories, radius):
+def draw_segmentation_label(img, gt_coords, gt_categories, radius):
     """Convert a list of points to a segmentation map containing circles.
 
     Parameters
     ----------
     img: torch.tensor
         An input image of size 3 x H x W.
-    gt_points: List[Tuple(int, int)]
-        A list of points (x, y).
+    gt_coords: List[Tuple(int, int)]
+        A list of points (y, x).
     gt_categories: List[int]
         A list of category.
     radius: int
@@ -86,36 +86,36 @@ def draw_segmentation_label(img, gt_points, gt_categories, radius):
     """
     H, W = img.shape[1:]
     seg_label = torch.zeros((H, W), dtype=torch.int64)
-    for (x, y), category in zip(gt_points, gt_categories):
+    for (y, x), category in zip(gt_coords, gt_categories):
         circle_y, circle_x = draw.disk((int(y), int(x)), radius, shape=(H, W))
         seg_label[circle_y, circle_x] = int(category)
 
     return seg_label
 
 
-def find_peaks_from_heatmap(arr, min_distance):
-    """ Find peaks from heatmap.
+def find_mitotic_cells_from_heatmap(arr, mitotic_cell_cls_idx=1, min_distance=30):
+    """ Find mitotic cells from prediction heatmap.
 
     Parameters
     ----------
-    arr: torch.tensor
-        An array shape (1 + num_classes, H, W), where 1 denotes Background.
+    arr: np.ndarray
+        An array shape (1 + num_classes, H, W), where 1 denotes background.
+
+    mitotic_cell_cls_idx: int
+        A class index of mitotic cell.
 
     min_distance: int
-        Minimum distance (pixel) between peaks.
+        A minimum distance (pixel) between cellss.
 
     Returns
     ------------
-    peaks_coords: np.ndarray (N, 2)
-        Coordinates of peaks.
+    cell_coords: np.ndarray (N, 2)
+        Coordinates of cells.
     
-    peaks_score: np.ndarray (N,)
-        Score of peaks.
-
-    peaks_class: np.ndarray (N,)
-        Class of peaks
+    cell_score: np.ndarray (N,)
+        Score of cells.
     """
-    arr = np.array(arr)
+    assert isinstance(arr, np.ndarray)
     assert np.all(np.isclose(np.sum(arr, axis=0), 1.0)), "Input arr should be post-softmax."
 
     # Use background channel for peak finding
@@ -123,17 +123,16 @@ def find_peaks_from_heatmap(arr, min_distance):
     obj = 1.0 - bkg
 
     # Coords are (y, x) order
-    peaks_coords = peak_local_max(obj, min_distance=min_distance)
-    peaks_score = np.max(arr, axis=0)[peaks_coords[:, 0], peaks_coords[:, 1]]
-    peaks_class = np.argmax(arr, axis=0)[peaks_coords[:, 0], peaks_coords[:, 1]]
+    cell_coords = peak_local_max(obj, min_distance=min_distance)
+    cell_score = np.max(arr, axis=0)[cell_coords[:, 0], cell_coords[:, 1]]
+    cell_cls = np.argmax(arr, axis=0)[cell_coords[:, 0], cell_coords[:, 1]]
 
     # Filter out only mitotic cells (class index 1)
-    is_mitotic_cell = (peaks_class == 1)
-    peaks_coords = peaks_coords[is_mitotic_cell]
-    peaks_score = peaks_score[is_mitotic_cell]
-    peaks_class = peaks_class[is_mitotic_cell]
+    is_mitotic_cell = (cell_cls == mitotic_cell_cls_idx)
+    cell_coords = cell_coords[is_mitotic_cell]
+    cell_score = cell_score[is_mitotic_cell]
 
-    if len(peaks_coords) == 0:
-        return np.empty((0, 2)), np.empty((0)), np.empty((0))
+    if len(cell_coords) == 0:
+        return np.empty((0, 2)), np.empty((0))
 
-    return peaks_coords, peaks_score, peaks_class
+    return cell_coords, cell_score
