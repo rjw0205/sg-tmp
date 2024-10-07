@@ -9,6 +9,7 @@ import albumentations as A
 
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset, DataLoader, default_collate
+from omegaconf import ListConfig
 
 from codes.fda import fda_augmentation
 from codes.utils import read_img, parse_wkt_annotation, draw_segmentation_label
@@ -26,7 +27,7 @@ class MIDOG2021Dataset(Dataset):
         radius=15,
     ):
         assert os.path.exists(root_path), f"{root_path} does not exist."
-        assert isinstance(scanners, list)
+        assert isinstance(scanners, (list, ListConfig))
         assert isinstance(training, bool)
         assert isinstance(fda_beta_start, float)
         assert isinstance(fda_beta_end, float)
