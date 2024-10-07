@@ -6,6 +6,7 @@ from torchvision.models.segmentation import (
 from pytorch_lightning import Trainer
 from codes.dataset.midog2021_dataset import MIDOG2021Dataset, midog_collate_fn
 from codes.framework.framework import FDASegmentationModule
+from codes.logger.incl import InclLogger
 
 
 # Setup datasets
@@ -48,6 +49,9 @@ lightning_model = FDASegmentationModule(
     lr,
 )
 
+# Define the logger
+logger = InclLogger()
+
 # Define the trainer and start training
 trainer = Trainer(
     max_epochs=10,
@@ -55,5 +59,6 @@ trainer = Trainer(
     log_every_n_steps=10,
     devices=4, 
     accelerator="gpu",
+    logger=logger,
 )
 trainer.fit(lightning_model)
