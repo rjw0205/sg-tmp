@@ -5,6 +5,7 @@ import shapely.wkt as wkt
 from skimage import draw
 from PIL import Image
 from skimage.feature import peak_local_max
+from codes.constant import MITOTIC_CELL_CLS_IDX
 
 
 def save_img_from_numpy_array(arr, save_name):
@@ -93,7 +94,7 @@ def draw_segmentation_label(img, gt_coords, gt_categories, radius):
     return seg_label
 
 
-def find_mitotic_cells_from_heatmap(arr, mitotic_cell_cls_idx=1, min_distance=30):
+def find_mitotic_cells_from_heatmap(arr, min_distance):
     """ Find mitotic cells from prediction heatmap.
 
     Parameters
@@ -105,7 +106,7 @@ def find_mitotic_cells_from_heatmap(arr, mitotic_cell_cls_idx=1, min_distance=30
         A class index of mitotic cell.
 
     min_distance: int
-        A minimum distance (pixel) between cellss.
+        A minimum distance (pixel) between cells.
 
     Returns
     ------------
@@ -127,8 +128,8 @@ def find_mitotic_cells_from_heatmap(arr, mitotic_cell_cls_idx=1, min_distance=30
     cell_scores = np.max(arr, axis=0)[cell_coords[:, 0], cell_coords[:, 1]]
     cell_cls = np.argmax(arr, axis=0)[cell_coords[:, 0], cell_coords[:, 1]]
 
-    # Filter out only mitotic cells (class index 1)
-    is_mitotic_cell = (cell_cls == mitotic_cell_cls_idx)
+    # Filter out only mitotic cells
+    is_mitotic_cell = (cell_cls == MITOTIC_CELL_CLS_IDX)
     cell_coords = cell_coords[is_mitotic_cell]
     cell_scores = cell_scores[is_mitotic_cell]
 

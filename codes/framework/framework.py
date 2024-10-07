@@ -10,6 +10,7 @@ from codes.utils import (
     compute_tp_and_fp, 
     compute_precision_recall_f1, 
 )
+from codes.constant import MITOTIC_CELL_DISTANCE_CUT_OFF
 
 
 class FDASegmentationModule(pl.LightningModule):
@@ -35,7 +36,6 @@ class FDASegmentationModule(pl.LightningModule):
         self.lr = lr
 
         # Store predictions and GT for each batch
-        self.cut_off = 30
         self.predictions = []
         self.gt_coords = []
 
@@ -50,7 +50,6 @@ class FDASegmentationModule(pl.LightningModule):
             len(self.trn_dataset.indices_with_at_least_one_annot)
         )
         self.trn_subset = Subset(self.trn_dataset, indices_for_training)
-        # self.trn_subset = Subset(self.trn_dataset, list(range(32)))
 
     def on_fit_start(self):
         # Subsample before the first epoch
@@ -73,7 +72,6 @@ class FDASegmentationModule(pl.LightningModule):
     def val_dataloader(self):
         # Use the full validation dataset (no subsampling)
         return DataLoader(
-            # Subset(self.val_dataset, list(range(1024))),
             self.val_dataset, 
             batch_size=self.batch_size,
             shuffle=False, 
@@ -146,7 +144,10 @@ class FDASegmentationModule(pl.LightningModule):
 
             # Find mitotic cells from prediction heatmap
             pred = self.predictions[i]
-            pred_coords, pred_scores = find_mitotic_cells_from_heatmap(pred)
+            pred_coords, pred_scores = find_mitotic_cells_from_heatmap(
+                pred, 
+                min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
+            )
             num_preds = len(pred_coords)
 
             # Calculate TP and FP
@@ -162,7 +163,7 @@ class FDASegmentationModule(pl.LightningModule):
                     pred_coords, 
                     pred_scores, 
                     gt_coords, 
-                    self.cut_off,
+                    MITOTIC_CELL_DISTANCE_CUT_OFF,
                 )
                 global_num_tp += num_tp
                 global_num_fp += num_fp

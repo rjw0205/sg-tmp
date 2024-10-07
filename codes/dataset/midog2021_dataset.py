@@ -10,6 +10,7 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset, DataLoader, default_collate
 
+from codes.constant import MITOTIC_CELL_CLS_IDX
 from codes.fda import fda_augmentation
 from codes.utils import read_img, parse_wkt_annotation, draw_segmentation_label
 
@@ -31,8 +32,6 @@ class MIDOG2021Dataset(Dataset):
         assert isinstance(fda_beta_start, float)
         assert isinstance(fda_beta_end, float)
         assert 0.0 < fda_beta_start <= fda_beta_end <= 0.5
-
-        self.mitotic_figure_cls_idx = 1  # This value is constant
 
         self.root_path = root_path
         self.scanners = scanners
@@ -138,7 +137,7 @@ class MIDOG2021Dataset(Dataset):
         # Exclude non-mitotic cells from GT points, which are not used for metric computation.
         gt_coords = [
             gt_coord for gt_coord, gt_cls in zip(gt_coords, gt_categories) 
-            if gt_cls == self.mitotic_figure_cls_idx
+            if gt_cls == MITOTIC_CELL_CLS_IDX
         ]
 
         # Output of dataset

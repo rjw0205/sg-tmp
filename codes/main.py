@@ -53,7 +53,7 @@ trainer = Trainer(
     max_epochs=10,
     check_val_every_n_epoch=1,
     log_every_n_steps=10,
-    devices=1, 
+    devices=4, 
     accelerator="gpu",
 )
 trainer.fit(lightning_model)
