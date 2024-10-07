@@ -40,9 +40,9 @@ class MIDOG2021Dataset(Dataset):
         self.fda_beta_end = fda_beta_end
         self.do_fda = do_fda
 
+        self.metadata = self.get_metadata(root_path)
         self.img_paths = self.get_img_paths(root_path)
         self.img_paths_per_scanner = self.get_img_paths_per_scanner(root_path)
-        self.metadata = self.get_metadata(root_path)
         self.transform = self.get_transforms()
         self.setup_indices()
     
@@ -60,9 +60,19 @@ class MIDOG2021Dataset(Dataset):
                 self.indices_with_at_least_one_annot.append(i)
 
     def get_img_paths(self, root_path):
-        img_paths = []
+        all_img_paths = []
         for scanner in self.scanners:
-            img_paths += sorted(glob.glob(f"{root_path}/{scanner}/*/*.jpg"))
+            all_img_paths += sorted(glob.glob(f"{root_path}/{scanner}/*/*.jpg"))
+
+        # Exclude patches which are not annotated
+        img_paths = []
+        for img_path in all_img_paths:
+            meta_key = img_path.replace(".jpg", "")
+            is_annotated = self.metadata[meta_key]["is_annotated"]
+            if is_annotated:
+                img_paths.append(img_path)
+
+        # TODO: if not traning, do not load overlapped patches (this info should be saved in metadata)
 
         return img_paths
 
@@ -175,7 +185,7 @@ def midog_collate_fn(batch):
 
 if __name__ == "__main__":
     root_path = "/lunit/data/midog_2021_patches"
-    scanners = ["Aperio_CS2", "Hamamatsu_S360", "Hamamatsu_XR"]
+    scanners = ["Aperio_CS2", "Hamamatsu_S360", "Hamamatsu_XR", "Leica_GT450"]
     training = True
     do_fda = True
     batch_size = 1
