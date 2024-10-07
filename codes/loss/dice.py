@@ -53,8 +53,8 @@ class DiceLoss(nn.Module):
             torch.Tensor: Dice score for each channel.
         """
         # Flatten predictions and targets
-        predictions = predictions.view(predictions.shape[0], -1)
-        targets = targets.view(targets.shape[0], -1)
+        predictions = predictions.contiguous().view(predictions.shape[0], -1)
+        targets = targets.contiguous().view(targets.shape[0], -1)
 
         # Compute intersection and union
         intersection = torch.sum(predictions * targets, dim=1)
@@ -96,7 +96,7 @@ class DiceLoss(nn.Module):
 
         # Convert hard labels (N, H, W) to one-hot encoding (C, N, H, W)
         if targets.dim() == 3:
-            num_classes = predictions.shape[1]
+            num_classes = predictions.shape[0]
             targets = self._convert_to_one_hot(targets, num_classes)
         elif targets.dim() == 4:
             targets = targets.permute(1, 0, 2, 3)
@@ -114,3 +114,20 @@ class DiceLoss(nn.Module):
 
         # Return the mean loss across the channels
         return focal_dice_loss.mean()
+
+
+if __name__ == "__main__":
+    # Define predictions and targets
+    predictions = torch.randn(4, 3, 128, 128)
+    hard_targets = torch.randint(0, 3, (4, 128, 128))
+    soft_targets = torch.stack([hard_targets for _ in range(3)], dim=1) / 3.0
+
+    # Initialize Dice loss
+    dice_loss = DiceLoss(smooth=1.0, p=2, gamma=1.0)
+
+    # Compute Dice loss
+    loss = dice_loss(predictions, hard_targets)
+    print("Dice Loss (Hard Labels):", loss.item())
+
+    loss = dice_loss(predictions, soft_targets)
+    print("Dice Loss (Soft Labels):", loss.item())
