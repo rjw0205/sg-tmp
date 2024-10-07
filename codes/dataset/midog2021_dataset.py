@@ -31,7 +31,7 @@ class MIDOG2021Dataset(Dataset):
         assert isinstance(fda_beta_start, float)
         assert isinstance(fda_beta_end, float)
         assert 0.0 < fda_beta_start <= fda_beta_end <= 0.5
-        if not self.training:
+        if not training:
             assert do_fda is False, "FDA is only for training."
 
         self.root_path = root_path

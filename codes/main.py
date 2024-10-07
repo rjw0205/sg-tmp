@@ -12,7 +12,7 @@ from codes.framework.framework import FDASegmentationModule
 DATA_ROOT_PATH = "/lunit/data/midog_2021_patches"
 trn_dataset = MIDOG2021Dataset(
     root_path=DATA_ROOT_PATH, 
-    scanners=["Aperio_CS2", "Hamamatsu_S360"], 
+    scanners=["Aperio_CS2", "Hamamatsu_S360", "Leica_GT450"],  # Leica_GT450 is not annotated
     training=True, 
     do_fda=True,
 )
