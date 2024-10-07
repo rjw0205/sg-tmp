@@ -31,6 +31,8 @@ class MIDOG2021Dataset(Dataset):
         assert isinstance(fda_beta_start, float)
         assert isinstance(fda_beta_end, float)
         assert 0.0 < fda_beta_start <= fda_beta_end <= 0.5
+        if not self.training:
+            assert do_fda is False, "FDA is only for training."
 
         self.root_path = root_path
         self.scanners = scanners
@@ -60,19 +62,22 @@ class MIDOG2021Dataset(Dataset):
                 self.indices_with_at_least_one_annot.append(i)
 
     def get_img_paths(self, root_path):
-        all_img_paths = []
+        img_paths = []
         for scanner in self.scanners:
-            all_img_paths += sorted(glob.glob(f"{root_path}/{scanner}/*/*.jpg"))
+            img_paths += sorted(glob.glob(f"{root_path}/{scanner}/*/*.jpg"))
 
         # Exclude patches which are not annotated
-        img_paths = []
-        for img_path in all_img_paths:
-            meta_key = img_path.replace(".jpg", "")
-            is_annotated = self.metadata[meta_key]["is_annotated"]
-            if is_annotated:
-                img_paths.append(img_path)
+        img_paths = [
+            img_path for img_path in img_paths
+            if self.metadata[img_path.replace(".jpg", "")]["is_annotated"]
+        ]
 
-        # TODO: if not traning, do not load overlapped patches (this info should be saved in metadata)
+        # Exclude overlapped patches during evaluation
+        if not self.training:
+            img_paths = [
+                img_path for img_path in img_paths
+                if not self.metadata[img_path.replace(".jpg", "")]["only_for_training"]
+            ]
 
         return img_paths
 
