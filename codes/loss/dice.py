@@ -8,6 +8,7 @@ class DiceLoss(nn.Module):
     Computes the Dice Loss, a measure of overlap between two samples.
     
     This implementation supports both hard labels (shape: N, H, W) and soft labels (shape: N, C, H, W).
+    Refer to the original paper for more details about focal dice loss: https://arxiv.org/abs/1810.07842
 
     Args:
         smooth (float, optional): A smoothing constant to prevent division by zero. Defaults to 1.0.
