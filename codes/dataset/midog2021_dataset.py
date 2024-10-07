@@ -32,6 +32,8 @@ class MIDOG2021Dataset(Dataset):
         assert isinstance(fda_beta_end, float)
         assert 0.0 < fda_beta_start <= fda_beta_end <= 0.5
 
+        self.mitotic_figure_cls_idx = 1  # This value is constant
+
         self.root_path = root_path
         self.scanners = scanners
         self.radius = radius
@@ -134,7 +136,10 @@ class MIDOG2021Dataset(Dataset):
         seg_label = draw_segmentation_label(img, gt_coords, gt_categories, self.radius)
 
         # Exclude non-mitotic cells from GT points, which are not used for metric computation.
-        gt_coords = [gt_coord for gt_coord, gt_cls in zip(gt_coords, gt_categories) if gt_cls == 1]
+        gt_coords = [
+            gt_coord for gt_coord, gt_cls in zip(gt_coords, gt_categories) 
+            if gt_cls == self.mitotic_figure_cls_idx
+        ]
 
         # Output of dataset
         sample = {"img": img, "seg_label": seg_label,  "gt_coords": gt_coords}
