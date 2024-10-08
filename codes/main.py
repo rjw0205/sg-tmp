@@ -8,8 +8,9 @@ from omegaconf import DictConfig
 from pytorch_lightning import Trainer
 from codes.dataset.midog2021_dataset import MIDOG2021Dataset, midog_collate_fn
 from codes.framework.framework import FDASegmentationModule
-from codes.logger.incl import InclLogger
 from codes.loss.dice import DiceLoss
+from codes.logger.incl import InclLogger
+from lightning.pytorch import loggers as pl_loggers
 
 
 @hydra.main(config_path="config", config_name="config")
@@ -49,8 +50,9 @@ def main(cfg: DictConfig):
         lr=cfg.optimizer.lr,
     )
 
-    # Define the logger
-    logger = InclLogger()
+    # Define the loggers
+    incl_logger = InclLogger()
+    tb_logger = pl_loggers.TensorBoardLogger(save_dir="tb_logs/")
 
     # Define the trainer and start training
     trainer = Trainer(
@@ -59,7 +61,7 @@ def main(cfg: DictConfig):
         log_every_n_steps=cfg.trainer.log_every_n_steps,
         devices=cfg.trainer.devices, 
         accelerator="gpu",
-        logger=logger,
+        logger=[incl_logger, tb_logger],
     )
     trainer.fit(lightning_model)
 

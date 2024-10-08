@@ -8,6 +8,10 @@ class InclLogger(Logger):
     def name(self):
         return "InclLogger"
 
+    @property
+    def version(self):
+        return "0.1"
+
     @rank_zero_only
     def log_hyperparams(self, params):
         incl.config.init(vars(params))
