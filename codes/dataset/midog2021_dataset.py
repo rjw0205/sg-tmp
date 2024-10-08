@@ -32,6 +32,8 @@ class MIDOG2021Dataset(Dataset):
         assert isinstance(fda_beta_start, float)
         assert isinstance(fda_beta_end, float)
         assert 0.0 < fda_beta_start <= fda_beta_end <= 0.5
+        if not training:
+            assert do_fda is False, "FDA is only for training."
 
         self.root_path = root_path
         self.scanners = scanners
@@ -41,9 +43,9 @@ class MIDOG2021Dataset(Dataset):
         self.fda_beta_end = fda_beta_end
         self.do_fda = do_fda
 
+        self.metadata = self.get_metadata(root_path)
         self.img_paths = self.get_img_paths(root_path)
         self.img_paths_per_scanner = self.get_img_paths_per_scanner(root_path)
-        self.metadata = self.get_metadata(root_path)
         self.transform = self.get_transforms()
         self.setup_indices()
     
@@ -64,6 +66,19 @@ class MIDOG2021Dataset(Dataset):
         img_paths = []
         for scanner in self.scanners:
             img_paths += sorted(glob.glob(f"{root_path}/{scanner}/*/*.jpg"))
+
+        # Exclude patches which are not annotated
+        img_paths = [
+            img_path for img_path in img_paths
+            if self.metadata[img_path.replace(".jpg", "")]["is_annotated"]
+        ]
+
+        # Exclude overlapped patches during evaluation
+        if not self.training:
+            img_paths = [
+                img_path for img_path in img_paths
+                if not self.metadata[img_path.replace(".jpg", "")]["only_for_training"]
+            ]
 
         return img_paths
 
@@ -176,7 +191,7 @@ def midog_collate_fn(batch):
 
 if __name__ == "__main__":
     root_path = "/lunit/data/midog_2021_patches"
-    scanners = ["Aperio_CS2", "Hamamatsu_S360", "Hamamatsu_XR"]
+    scanners = ["Aperio_CS2", "Hamamatsu_S360", "Hamamatsu_XR", "Leica_GT450"]
     training = True
     do_fda = True
     batch_size = 1
