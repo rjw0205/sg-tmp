@@ -6,6 +6,7 @@ from torchvision.models.segmentation import (
 from pytorch_lightning import Trainer
 from codes.dataset.midog2021_dataset import MIDOG2021Dataset, midog_collate_fn
 from codes.framework.framework import FDASegmentationModule
+from codes.loss.dice import DiceLoss
 
 
 # Setup datasets
@@ -30,8 +31,8 @@ model.classifier[4] = torch.nn.Conv2d(256, num_classes, kernel_size=(1, 1))
 model.aux_classifier = None
 
 # Setup loss
-supervised_loss = torch.nn.CrossEntropyLoss()  # TODO
-consistency_loss = torch.nn.CrossEntropyLoss()  # TODO
+supervised_loss = DiceLoss()
+consistency_loss = DiceLoss()
 
 # Instantiate lightning module
 lr = 1e-4
