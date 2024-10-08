@@ -62,6 +62,7 @@ def main(cfg: DictConfig):
         devices=cfg.trainer.devices, 
         accelerator="gpu",
         logger=[incl_logger, tb_logger],
+        num_sanity_val_steps=0
     )
     trainer.fit(lightning_model)
 

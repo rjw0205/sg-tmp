@@ -35,9 +35,10 @@ class FDASegmentationModule(pl.LightningModule):
         self.consistency_loss = consistency_loss
         self.lr = lr
 
-        # Store predictions and GT for each batch
-        self.predictions = []
-        self.gt_coords = []
+        # Store number of GT, TP, FP per image for evaluation
+        self.global_num_gt = []
+        self.global_num_tp = []
+        self.global_num_fp = []
 
     def subsample_trn_dataset(self):
         # Subsample new indices for each epoch of training it includes,
@@ -120,8 +121,32 @@ class FDASegmentationModule(pl.LightningModule):
         self.log("val_supervised_loss", supervised_loss, sync_dist=True)
 
         # Collect predictions and GT for metric calculation
-        self.predictions.append(preds.softmax(dim=1).detach().cpu().numpy())
-        self.gt_coords += gt_coords
+        preds_softmax = preds.softmax(dim=1).detach().cpu().numpy()
+        for pred_softmax, gt_coord in zip(preds_softmax, gt_coords):
+            gt_coord = np.array(gt_coord)
+            pred_coord, pred_score = find_mitotic_cells_from_heatmap(
+                pred_softmax, 
+                min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
+            )
+            num_preds = len(pred_coord)
+            num_gt = len(gt_coord)
+
+            # Calculate number of TP and FP
+            if num_preds == 0:
+                num_tp, num_fp = 0, 0
+            elif num_gt == 0:
+                num_tp, num_fp = 0, num_preds
+            else:
+                num_tp, num_fp = compute_tp_and_fp(
+                    pred_coord, 
+                    pred_score, 
+                    gt_coord, 
+                    MITOTIC_CELL_DISTANCE_CUT_OFF,
+                )
+
+            self.global_num_gt.append(num_gt)
+            self.global_num_tp.append(num_tp)
+            self.global_num_fp.append(num_fp)
 
         return {
             "loss": supervised_loss,
@@ -129,57 +154,26 @@ class FDASegmentationModule(pl.LightningModule):
         }
 
     def on_validation_epoch_end(self):
-        self.predictions = np.concatenate(self.predictions, axis=0)
-        assert len(self.predictions) == len(self.gt_coords)
+        # Gather over GPUs
+        all_num_gt = self.all_gather(self.global_num_gt)
+        all_num_tp = self.all_gather(self.global_num_tp)
+        all_num_fp = self.all_gather(self.global_num_fp)
 
-        global_num_gt = 0
-        global_num_tp = 0
-        global_num_fp = 0
+        # Calculate population GT, TP, FP
+        all_num_gt = np.sum([n.cpu().numpy() for n in all_num_gt])
+        all_num_tp = np.sum([n.cpu().numpy() for n in all_num_tp])
+        all_num_fp = np.sum([n.cpu().numpy() for n in all_num_fp])
 
-        for i in range(len(self.predictions)):
-            # Collect num GT
-            gt_coords = np.array(self.gt_coords[i])
-            num_gt = len(gt_coords)
-            global_num_gt += num_gt
+        # Calculate metrics
+        precision, recall, f1 = compute_precision_recall_f1(all_num_gt, all_num_tp, all_num_fp)
+        self.log("Precision", round(100 * precision, 2), sync_dist=True)
+        self.log("Recall", round(100 * recall, 2), sync_dist=True)
+        self.log("F1", round(100 * f1, 2), sync_dist=True)
 
-            # Find mitotic cells from prediction heatmap
-            pred = self.predictions[i]
-            pred_coords, pred_scores = find_mitotic_cells_from_heatmap(
-                pred, 
-                min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
-            )
-            num_preds = len(pred_coords)
-
-            # Calculate TP and FP
-            if num_preds == 0:
-                # If no preidcted cells, continue
-                continue
-            elif num_gt == 0:
-                # If no GT cells, all predicted cells are False Positive
-                global_num_fp += num_preds
-                continue
-            else:
-                num_tp, num_fp = compute_tp_and_fp(
-                    pred_coords, 
-                    pred_scores, 
-                    gt_coords, 
-                    MITOTIC_CELL_DISTANCE_CUT_OFF,
-                )
-                global_num_tp += num_tp
-                global_num_fp += num_fp
-
-        precision, recall, f1 = compute_precision_recall_f1(
-            global_num_gt, 
-            global_num_tp, 
-            global_num_fp,
-        )
-        self.log("Precision", round(precision, 4), sync_dist=True)
-        self.log("Recall", round(recall, 4), sync_dist=True)
-        self.log("F1", round(f1, 4), sync_dist=True)
-
-        # Refresh for next evaluation
-        self.predictions = []
-        self.gt_coords = []
+        # Refresh cell counts for next evaluation
+        self.global_num_gt = []
+        self.global_num_tp = []
+        self.global_num_fp = []
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
