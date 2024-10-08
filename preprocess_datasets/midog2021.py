@@ -13,7 +13,7 @@ from shapely.wkt import dumps
 ROOT_PATH = "/storage6/pp/share/rjw0205/scanner_generalization/paper_submission/MIDOG_2021"
 SAVE_PATH = "/lunit/data/midog_2021_patches"
 PATCH_SIZE = 512
-STEP_SIZE = 256
+STEP_SIZE = (PATCH_SIZE // 2)
 
 
 def _parse_annotation(json_path):
@@ -70,13 +70,19 @@ def extract_patches_and_labels_from_slide(sld_path, annotation):
             roi = roi.convert("RGB")
             roi.save(f"{save_name}.jpg", "JPEG")
 
-            # Prepare metadata contains cell count information
+            # Overlapped patches will be used only at training time
+            only_for_training = (start_x % PATCH_SIZE != 0) or (start_y % PATCH_SIZE != 0)
+
+            # Some patches are not annotated which is different from 0 cell
             is_annotated = (annotation != "N/A")
+
+            # Prepare metadata
             metadata[save_name] = {
                 "slide_id": sld_idx,
                 "patch_id": f"x_{start_x}_y_{start_y}_size_{PATCH_SIZE}",
                 "scanner": scanner,
                 "is_annotated": is_annotated,
+                "only_for_training": only_for_training,
                 "num_mitotic_figure": 0, 
                 "num_non_mitotic_figure": 0,
             }

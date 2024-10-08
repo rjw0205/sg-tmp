@@ -8,6 +8,7 @@ from omegaconf import DictConfig
 from pytorch_lightning import Trainer
 from codes.dataset.midog2021_dataset import MIDOG2021Dataset, midog_collate_fn
 from codes.framework.framework import FDASegmentationModule
+from codes.loss.dice import DiceLoss
 
 
 @hydra.main(config_path="config", config_name="config")
@@ -32,8 +33,8 @@ def main(cfg: DictConfig):
     model.aux_classifier = None
 
     # Setup loss
-    supervised_loss = torch.nn.CrossEntropyLoss()  # TODO
-    consistency_loss = torch.nn.CrossEntropyLoss()  # TODO
+    supervised_loss = DiceLoss()
+    consistency_loss = DiceLoss()
 
     # Instantiate lightning module
     lightning_model = FDASegmentationModule(

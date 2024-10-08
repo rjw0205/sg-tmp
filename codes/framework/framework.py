@@ -1,9 +1,16 @@
 import random
 import torch
+import numpy as np
 import pytorch_lightning as pl
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Subset
 from codes.dataset.midog2021_dataset import midog_collate_fn
+from codes.utils import (
+    find_mitotic_cells_from_heatmap, 
+    compute_tp_and_fp, 
+    compute_precision_recall_f1, 
+)
+from codes.constant import MITOTIC_CELL_DISTANCE_CUT_OFF
 
 
 class FDASegmentationModule(pl.LightningModule):
@@ -17,7 +24,6 @@ class FDASegmentationModule(pl.LightningModule):
         supervised_loss, 
         consistency_loss, 
         lr,
-        subset_size=1000,
     ):
         super(FDASegmentationModule, self).__init__()
         self.model = model
@@ -25,10 +31,13 @@ class FDASegmentationModule(pl.LightningModule):
         self.val_dataset = val_dataset
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.subset_size = subset_size
         self.supervised_loss = supervised_loss
         self.consistency_loss = consistency_loss
         self.lr = lr
+
+        # Store predictions and GT for each batch
+        self.predictions = []
+        self.gt_coords = []
 
     def subsample_trn_dataset(self):
         # Subsample new indices for each epoch of training it includes,
@@ -74,7 +83,7 @@ class FDASegmentationModule(pl.LightningModule):
         return self.model(x)["out"]
 
     def training_step(self, batch, batch_idx):
-        imgs_dict, seg_labels, gt_points, gt_categories = batch
+        imgs_dict, seg_labels, gt_coords = batch
         
         # Compute supervised loss
         imgs = imgs_dict["original"]
@@ -101,7 +110,7 @@ class FDASegmentationModule(pl.LightningModule):
         }
 
     def validation_step(self, batch, batch_idx):
-        imgs_dict, seg_labels, gt_points, gt_categories = batch
+        imgs_dict, seg_labels, gt_coords = batch
 
         # Compute supervised loss
         imgs = imgs_dict["original"]
@@ -109,10 +118,68 @@ class FDASegmentationModule(pl.LightningModule):
         supervised_loss = self.supervised_loss(preds, seg_labels)
 
         self.log("val_supervised_loss", supervised_loss, sync_dist=True)
+
+        # Collect predictions and GT for metric calculation
+        self.predictions.append(preds.softmax(dim=1).detach().cpu().numpy())
+        self.gt_coords += gt_coords
+
         return {
             "loss": supervised_loss,
             "supervised_loss": supervised_loss,
         }
+
+    def on_validation_epoch_end(self):
+        self.predictions = np.concatenate(self.predictions, axis=0)
+        assert len(self.predictions) == len(self.gt_coords)
+
+        global_num_gt = 0
+        global_num_tp = 0
+        global_num_fp = 0
+
+        for i in range(len(self.predictions)):
+            # Collect num GT
+            gt_coords = np.array(self.gt_coords[i])
+            num_gt = len(gt_coords)
+            global_num_gt += num_gt
+
+            # Find mitotic cells from prediction heatmap
+            pred = self.predictions[i]
+            pred_coords, pred_scores = find_mitotic_cells_from_heatmap(
+                pred, 
+                min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
+            )
+            num_preds = len(pred_coords)
+
+            # Calculate TP and FP
+            if num_preds == 0:
+                # If no preidcted cells, continue
+                continue
+            elif num_gt == 0:
+                # If no GT cells, all predicted cells are False Positive
+                global_num_fp += num_preds
+                continue
+            else:
+                num_tp, num_fp = compute_tp_and_fp(
+                    pred_coords, 
+                    pred_scores, 
+                    gt_coords, 
+                    MITOTIC_CELL_DISTANCE_CUT_OFF,
+                )
+                global_num_tp += num_tp
+                global_num_fp += num_fp
+
+        precision, recall, f1 = compute_precision_recall_f1(
+            global_num_gt, 
+            global_num_tp, 
+            global_num_fp,
+        )
+        self.log("Precision", round(precision, 4), sync_dist=True)
+        self.log("Recall", round(recall, 4), sync_dist=True)
+        self.log("F1", round(f1, 4), sync_dist=True)
+
+        # Refresh for next evaluation
+        self.predictions = []
+        self.gt_coords = []
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
