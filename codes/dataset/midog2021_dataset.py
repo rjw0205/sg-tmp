@@ -9,7 +9,9 @@ import albumentations as A
 
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset, DataLoader, default_collate
+from omegaconf import ListConfig
 
+from codes.constant import MITOTIC_CELL_CLS_IDX
 from codes.fda import fda_augmentation
 from codes.utils import read_img, parse_wkt_annotation, draw_segmentation_label
 
@@ -26,11 +28,13 @@ class MIDOG2021Dataset(Dataset):
         radius=15,
     ):
         assert os.path.exists(root_path), f"{root_path} does not exist."
-        assert isinstance(scanners, list)
+        assert isinstance(scanners, (list, ListConfig))
         assert isinstance(training, bool)
         assert isinstance(fda_beta_start, float)
         assert isinstance(fda_beta_end, float)
         assert 0.0 < fda_beta_start <= fda_beta_end <= 0.5
+        if not training:
+            assert do_fda is False, "FDA is only for training."
 
         self.root_path = root_path
         self.scanners = scanners
@@ -40,9 +44,9 @@ class MIDOG2021Dataset(Dataset):
         self.fda_beta_end = fda_beta_end
         self.do_fda = do_fda
 
+        self.metadata = self.get_metadata(root_path)
         self.img_paths = self.get_img_paths(root_path)
         self.img_paths_per_scanner = self.get_img_paths_per_scanner(root_path)
-        self.metadata = self.get_metadata(root_path)
         self.transform = self.get_transforms()
         self.setup_indices()
     
@@ -63,6 +67,19 @@ class MIDOG2021Dataset(Dataset):
         img_paths = []
         for scanner in self.scanners:
             img_paths += sorted(glob.glob(f"{root_path}/{scanner}/*/*.jpg"))
+
+        # Exclude patches which are not annotated
+        img_paths = [
+            img_path for img_path in img_paths
+            if self.metadata[img_path.replace(".jpg", "")]["is_annotated"]
+        ]
+
+        # Exclude overlapped patches during evaluation
+        if not self.training:
+            img_paths = [
+                img_path for img_path in img_paths
+                if not self.metadata[img_path.replace(".jpg", "")]["only_for_training"]
+            ]
 
         return img_paths
 
@@ -124,22 +141,23 @@ class MIDOG2021Dataset(Dataset):
             fda_img = self.random_fda(img, src_scanner)
 
         # Read wkt annotation
-        gt_points, gt_categories = parse_wkt_annotation(wkt_path)
+        gt_coords, gt_categories = parse_wkt_annotation(wkt_path)
 
         # Apply transform to image and points
-        t = self.transform(image=img, keypoints=gt_points)
-        img, gt_points = t["image"], t["keypoints"]
+        t = self.transform(image=img, keypoints=gt_coords)
+        img, gt_coords = t["image"], t["keypoints"]
 
         # Create a segmentation label
-        seg_label = draw_segmentation_label(img, gt_points, gt_categories, self.radius)
+        seg_label = draw_segmentation_label(img, gt_coords, gt_categories, self.radius)
+
+        # Exclude non-mitotic cells from GT points, which are not used for metric computation.
+        gt_coords = [
+            gt_coord for gt_coord, gt_cls in zip(gt_coords, gt_categories) 
+            if gt_cls == MITOTIC_CELL_CLS_IDX
+        ]
 
         # Output of dataset
-        sample = {
-            "img": img,
-            "seg_label": seg_label, 
-            "gt_points": gt_points, 
-            "gt_categories": gt_categories
-        }
+        sample = {"img": img, "seg_label": seg_label,  "gt_coords": gt_coords}
 
         # Apply the same transform to FDA image
         if self.do_fda:
@@ -166,16 +184,15 @@ def midog_collate_fn(batch):
     seg_labels = [item["seg_label"] for item in batch]
     seg_labels = torch.stack(seg_labels, dim=0)
 
-    # Return GT point and categories as is, since each sample has different number of points
-    gt_points = [item["gt_points"] for item in batch]
-    gt_categories = [item["gt_categories"] for item in batch]
+    # Return GT point as is, since each sample has different number of points
+    gt_coords = [item["gt_coords"] for item in batch]
 
-    return imgs_dict, seg_labels, gt_points, gt_categories
+    return imgs_dict, seg_labels, gt_coords
 
 
 if __name__ == "__main__":
     root_path = "/lunit/data/midog_2021_patches"
-    scanners = ["Aperio_CS2", "Hamamatsu_S360", "Hamamatsu_XR"]
+    scanners = ["Aperio_CS2", "Hamamatsu_S360", "Hamamatsu_XR", "Leica_GT450"]
     training = True
     do_fda = True
     batch_size = 1
@@ -183,11 +200,10 @@ if __name__ == "__main__":
     # Sanity check
     dataset = MIDOG2021Dataset(root_path, scanners, training, do_fda)
     data_loader = DataLoader(dataset, batch_size=batch_size, collate_fn=midog_collate_fn)
-    for imgs_dict, seg_labels, gt_points, gt_categories in data_loader:
+    for imgs_dict, seg_labels, gt_coords in data_loader:
         print("original img shape:", imgs_dict["original"].shape)
         if do_fda:
             print("FDA img shape:", imgs_dict["fda"].shape)
         print("Segmentation label shape:", seg_labels.shape)
-        print("GT points:", gt_points)
-        print("GT categories:", gt_categories)
+        print("GT coordinates:", gt_coords)
         break
