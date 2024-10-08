@@ -51,7 +51,7 @@ lightning_model = FDASegmentationModule(
 # Define the trainer and start training
 trainer = Trainer(
     max_epochs=10,
-    check_val_every_n_epoch=5,
+    check_val_every_n_epoch=1,
     log_every_n_steps=10,
     devices=4, 
     accelerator="gpu",
