@@ -96,7 +96,7 @@ class FDASegmentationModule(pl.LightningModule):
             fda_preds = self.forward(fda_imgs)
             consistency_loss = self.consistency_loss(preds, fda_preds)
         else:
-            consistency_loss = torch.tensor(0.0)
+            consistency_loss = torch.tensor(0.0).cuda()
 
         # Log loss
         self.log("train_supervised_loss", supervised_loss, sync_dist=True)

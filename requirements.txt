@@ -3,3 +3,4 @@ openslide-python
 shapely
 opencv-python
 albumentations
+hydra-core
