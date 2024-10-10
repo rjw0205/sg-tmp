@@ -34,6 +34,7 @@ class FDASegmentationModule(pl.LightningModule):
         self.supervised_loss = supervised_loss
         self.consistency_loss = consistency_loss
         self.lr = lr
+        self.epoch_num_sample = 256 * 4
 
         # Store number of GT, TP, FP per image for evaluation
         self.global_num_gt = []
@@ -41,15 +42,17 @@ class FDASegmentationModule(pl.LightningModule):
         self.global_num_fp = []
 
     def subsample_trn_dataset(self):
-        # Subsample new indices for each epoch of training it includes,
-        # - indices which contains cell annotations
-        # - indices which don't have cell annotation (randomly sampled)
+        # Subsample indices for training epoch which includes,
+        # 1. sample which have 0 annotation 
+        # 2. sample which have only MF annotation
+        # 3. sample which have only non-MF annotation
+        # 4. sample which have both MF and non-MF annotation
+        num_sample = self.epoch_num_sample // 4
         indices_for_training = []
-        indices_for_training += self.trn_dataset.indices_with_at_least_one_annot
-        indices_for_training += random.sample(
-            self.trn_dataset.indices_with_zero_annot, 
-            len(self.trn_dataset.indices_with_at_least_one_annot)
-        )
+        indices_for_training += random.sample(self.trn_dataset.indices_no_cell, num_sample)
+        indices_for_training += random.sample(self.trn_dataset.indices_only_mf, num_sample)
+        indices_for_training += random.sample(self.trn_dataset.indices_only_nmf, num_sample)
+        indices_for_training += random.sample(self.trn_dataset.indices_both_mf_nmf, num_sample)
         self.trn_subset = Subset(self.trn_dataset, indices_for_training)
 
     def on_fit_start(self):
@@ -102,8 +105,8 @@ class FDASegmentationModule(pl.LightningModule):
             consistency_loss = torch.tensor(0.0).cuda()
 
         # Log loss
-        self.log("train_supervised_loss", supervised_loss, sync_dist=True)
-        self.log("train_consistency_loss", consistency_loss, sync_dist=True)
+        self.log("train_supervised_loss", supervised_loss, sync_dist=True, batch_size=self.batch_size)
+        self.log("train_consistency_loss", consistency_loss, sync_dist=True, batch_size=self.batch_size)
 
         # Return losses
         return {
@@ -120,7 +123,8 @@ class FDASegmentationModule(pl.LightningModule):
         preds = self.forward(imgs)
         supervised_loss = self.supervised_loss(preds, seg_labels)
 
-        self.log("val_supervised_loss", supervised_loss, sync_dist=True)
+        # Log loss
+        self.log("val_supervised_loss", supervised_loss, sync_dist=True, batch_size=self.batch_size)
 
         # Collect predictions and GT for metric calculation
         preds_softmax = preds.softmax(dim=1).detach().cpu().numpy()

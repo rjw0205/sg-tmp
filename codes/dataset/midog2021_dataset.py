@@ -50,17 +50,25 @@ class MIDOG2021Dataset(Dataset):
         self.setup_indices()
     
     def setup_indices(self):
-        self.indices_with_zero_annot = []
-        self.indices_with_at_least_one_annot = []
+        self.indices_no_cell = []
+        self.indices_only_mf = []
+        self.indices_only_nmf = []
+        self.indices_both_mf_nmf = []
 
         for i, img_path in enumerate(self.img_paths):
             meta_key = img_path.replace(".jpg", "")
             metadata = self.metadata[meta_key]
-            num_valid_cells = metadata["num_mitotic_figure"] + metadata["num_non_mitotic_figure"]
-            if num_valid_cells == 0:
-                self.indices_with_zero_annot.append(i)
-            else:
-                self.indices_with_at_least_one_annot.append(i)
+            num_mf = metadata["num_mitotic_figure"]
+            num_nmf = metadata["num_non_mitotic_figure"]
+
+            if num_mf == 0 and num_nmf == 0:  # no annotated cell
+                self.indices_no_cell.append(i)
+            elif num_mf > 0 and num_nmf == 0:  # only mitotic-figure exist
+                self.indices_only_mf.append(i)
+            elif num_mf == 0 and num_nmf > 0:  # only non-mitotic-figure exist
+                self.indices_only_nmf.append(i)
+            else:  # both exists
+                self.indices_both_mf_nmf.append(i)
 
     def get_img_paths(self, root_path):
         img_paths = []
