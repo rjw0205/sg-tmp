@@ -68,6 +68,7 @@ class FDASegmentationModule(pl.LightningModule):
             shuffle=True, 
             collate_fn=midog_collate_fn,
             num_workers=self.num_workers,
+            drop_last=True,
         )
 
     def val_dataloader(self):
@@ -78,6 +79,7 @@ class FDASegmentationModule(pl.LightningModule):
             shuffle=False, 
             collate_fn=midog_collate_fn,
             num_workers=self.num_workers,
+            drop_last=True,
         )
     
     def forward(self, x):
