@@ -26,7 +26,7 @@ def main(cfg: DictConfig):
         root_path=cfg.dataset.root_path, 
         scanners=cfg.dataset.val_scanners, 
         do_fda=False,
-        training=True,
+        training=False,
     )
 
     # Setup model
