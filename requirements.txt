@@ -4,3 +4,5 @@ shapely
 opencv-python
 albumentations
 hydra-core
+lightning
+tensorboard

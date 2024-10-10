@@ -26,7 +26,7 @@ def main(cfg: DictConfig):
         root_path=cfg.dataset.root_path, 
         scanners=cfg.dataset.val_scanners, 
         do_fda=False,
-        training=True,
+        training=False,
     )
 
     # Setup model
@@ -62,6 +62,7 @@ def main(cfg: DictConfig):
         devices=cfg.trainer.devices, 
         accelerator="gpu",
         logger=[incl_logger, tb_logger],
+        num_sanity_val_steps=0
     )
     trainer.fit(lightning_model)
 

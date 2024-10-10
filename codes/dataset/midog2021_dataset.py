@@ -11,7 +11,6 @@ from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset, DataLoader, default_collate
 from omegaconf import ListConfig
 
-from codes.constant import MITOTIC_CELL_CLS_IDX
 from codes.fda import fda_augmentation
 from codes.utils import read_img, parse_wkt_annotation, draw_segmentation_label
 
@@ -149,12 +148,6 @@ class MIDOG2021Dataset(Dataset):
 
         # Create a segmentation label
         seg_label = draw_segmentation_label(img, gt_coords, gt_categories, self.radius)
-
-        # Exclude non-mitotic cells from GT points, which are not used for metric computation.
-        gt_coords = [
-            gt_coord for gt_coord, gt_cls in zip(gt_coords, gt_categories) 
-            if gt_cls == MITOTIC_CELL_CLS_IDX
-        ]
 
         # Output of dataset
         sample = {"img": img, "seg_label": seg_label,  "gt_coords": gt_coords}

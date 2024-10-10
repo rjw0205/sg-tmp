@@ -1,1 +1,1 @@
-num_classes: 3
+num_classes: 2  # BG, Mitotic Cell
