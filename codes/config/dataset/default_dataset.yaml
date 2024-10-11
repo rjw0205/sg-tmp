@@ -5,3 +5,4 @@ val_scanners: ["Hamamatsu_XR"]
 do_fda: False
 batch_size: 4
 num_workers: 8
+num_samples_per_epoch: 2048

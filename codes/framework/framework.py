@@ -19,8 +19,9 @@ class FDASegmentationModule(pl.LightningModule):
         model, 
         trn_dataset, 
         val_dataset, 
-        batch_size,
-        num_workers,
+        num_samples_per_epoch, 
+        batch_size, 
+        num_workers, 
         supervised_loss, 
         consistency_loss, 
         lr,
@@ -29,12 +30,12 @@ class FDASegmentationModule(pl.LightningModule):
         self.model = model
         self.trn_dataset = trn_dataset
         self.val_dataset = val_dataset
+        self.num_samples_per_epoch = num_samples_per_epoch
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.supervised_loss = supervised_loss
         self.consistency_loss = consistency_loss
         self.lr = lr
-        self.epoch_num_sample = 256 * 4
 
         # Store number of GT, TP, FP per image for evaluation
         self.global_num_gt = []
@@ -47,12 +48,12 @@ class FDASegmentationModule(pl.LightningModule):
         # 2. sample which have only MF annotation
         # 3. sample which have only non-MF annotation
         # 4. sample which have both MF and non-MF annotation
-        num_sample = self.epoch_num_sample // 4
+        N = self.num_samples_per_epoch // 4
         indices_for_training = []
-        indices_for_training += random.sample(self.trn_dataset.indices_no_cell, num_sample)
-        indices_for_training += random.sample(self.trn_dataset.indices_only_mf, num_sample)
-        indices_for_training += random.sample(self.trn_dataset.indices_only_nmf, num_sample)
-        indices_for_training += random.sample(self.trn_dataset.indices_both_mf_nmf, num_sample)
+        indices_for_training += random.sample(self.trn_dataset.indices_no_cell, N)
+        indices_for_training += random.sample(self.trn_dataset.indices_only_mf, N)
+        indices_for_training += random.sample(self.trn_dataset.indices_only_nmf, N)
+        indices_for_training += random.sample(self.trn_dataset.indices_both_mf_nmf, N)
         self.trn_subset = Subset(self.trn_dataset, indices_for_training)
 
     def on_fit_start(self):
