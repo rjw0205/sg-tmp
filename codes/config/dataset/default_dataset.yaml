@@ -2,6 +2,7 @@ name: "MIDOG2021Dataset"
 root_path: "/lunit/data/midog_2021_patches"
 trn_scanners: ["Aperio_CS2", "Hamamatsu_S360", "Leica_GT450"]
 val_scanners: ["Hamamatsu_XR"]
-do_fda: True
+do_fda: False
 batch_size: 4
 num_workers: 8
+num_samples_per_epoch: 2048

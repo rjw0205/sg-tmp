@@ -26,7 +26,7 @@ def main(cfg: DictConfig):
         root_path=cfg.dataset.root_path, 
         scanners=cfg.dataset.val_scanners, 
         do_fda=False,
-        training=True,
+        training=False,
     )
 
     # Setup model
@@ -43,6 +43,7 @@ def main(cfg: DictConfig):
         model=model, 
         trn_dataset=trn_dataset,
         val_dataset=val_dataset,
+        num_samples_per_epoch=cfg.dataset.num_samples_per_epoch,
         batch_size=cfg.dataset.batch_size,
         num_workers=cfg.dataset.num_workers,
         supervised_loss=supervised_loss, 
@@ -60,8 +61,9 @@ def main(cfg: DictConfig):
         check_val_every_n_epoch=cfg.trainer.check_val_every_n_epoch,
         log_every_n_steps=cfg.trainer.log_every_n_steps,
         devices=cfg.trainer.devices, 
-        accelerator="gpu",
         logger=[incl_logger, tb_logger],
+        accelerator="gpu",
+        num_sanity_val_steps=0,
     )
     trainer.fit(lightning_model)
 

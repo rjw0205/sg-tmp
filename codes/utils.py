@@ -40,7 +40,7 @@ def read_img(img_path):
     return img
 
 def parse_wkt_annotation(wkt_path):
-    """Load wkt label and parse it into list of points.
+    """Load wkt label and parse it into list of points. Only mitotic cells are treated as GT.
     
     Parameters
     ----------
@@ -59,9 +59,10 @@ def parse_wkt_annotation(wkt_path):
     with open(wkt_path, "r") as f:
         for line in f.read().splitlines():
             point, category = line.split("|")
-            point = wkt.loads(point)
-            gt_coords.append((int(point.y), int(point.x)))
-            gt_categories.append(int(category))
+            if int(category) == MITOTIC_CELL_CLS_IDX:  # ignore non mitotic cells
+                point = wkt.loads(point)
+                gt_coords.append((int(point.y), int(point.x)))
+                gt_categories.append(int(category))
 
     return gt_coords, gt_categories
 

@@ -19,8 +19,9 @@ class FDASegmentationModule(pl.LightningModule):
         model, 
         trn_dataset, 
         val_dataset, 
-        batch_size,
-        num_workers,
+        num_samples_per_epoch, 
+        batch_size, 
+        num_workers, 
         supervised_loss, 
         consistency_loss, 
         lr,
@@ -29,26 +30,30 @@ class FDASegmentationModule(pl.LightningModule):
         self.model = model
         self.trn_dataset = trn_dataset
         self.val_dataset = val_dataset
+        self.num_samples_per_epoch = num_samples_per_epoch
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.supervised_loss = supervised_loss
         self.consistency_loss = consistency_loss
         self.lr = lr
 
-        # Store predictions and GT for each batch
-        self.predictions = []
-        self.gt_coords = []
+        # Store number of GT, TP, FP per image for evaluation
+        self.global_num_gt = []
+        self.global_num_tp = []
+        self.global_num_fp = []
 
     def subsample_trn_dataset(self):
-        # Subsample new indices for each epoch of training it includes,
-        # - indices which contains cell annotations
-        # - indices which don't have cell annotation (randomly sampled)
+        # Subsample indices for training epoch which includes,
+        # 1. sample which have 0 annotation 
+        # 2. sample which have only MF annotation
+        # 3. sample which have only non-MF annotation
+        # 4. sample which have both MF and non-MF annotation
+        N = self.num_samples_per_epoch // 4
         indices_for_training = []
-        indices_for_training += self.trn_dataset.indices_with_at_least_one_annot
-        indices_for_training += random.sample(
-            self.trn_dataset.indices_with_zero_annot, 
-            len(self.trn_dataset.indices_with_at_least_one_annot)
-        )
+        indices_for_training += random.sample(self.trn_dataset.indices_no_cell, N)
+        indices_for_training += random.sample(self.trn_dataset.indices_only_mf, N)
+        indices_for_training += random.sample(self.trn_dataset.indices_only_nmf, N)
+        indices_for_training += random.sample(self.trn_dataset.indices_both_mf_nmf, N)
         self.trn_subset = Subset(self.trn_dataset, indices_for_training)
 
     def on_fit_start(self):
@@ -67,6 +72,7 @@ class FDASegmentationModule(pl.LightningModule):
             shuffle=True, 
             collate_fn=midog_collate_fn,
             num_workers=self.num_workers,
+            drop_last=True,
         )
 
     def val_dataloader(self):
@@ -77,6 +83,7 @@ class FDASegmentationModule(pl.LightningModule):
             shuffle=False, 
             collate_fn=midog_collate_fn,
             num_workers=self.num_workers,
+            drop_last=True,
         )
     
     def forward(self, x):
@@ -99,8 +106,8 @@ class FDASegmentationModule(pl.LightningModule):
             consistency_loss = torch.tensor(0.0).cuda()
 
         # Log loss
-        self.log("train_supervised_loss", supervised_loss, sync_dist=True)
-        self.log("train_consistency_loss", consistency_loss, sync_dist=True)
+        self.log("train_supervised_loss", supervised_loss, sync_dist=True, batch_size=self.batch_size)
+        self.log("train_consistency_loss", consistency_loss, sync_dist=True, batch_size=self.batch_size)
 
         # Return losses
         return {
@@ -117,11 +124,36 @@ class FDASegmentationModule(pl.LightningModule):
         preds = self.forward(imgs)
         supervised_loss = self.supervised_loss(preds, seg_labels)
 
-        self.log("val_supervised_loss", supervised_loss, sync_dist=True)
+        # Log loss
+        self.log("val_supervised_loss", supervised_loss, sync_dist=True, batch_size=self.batch_size)
 
         # Collect predictions and GT for metric calculation
-        self.predictions.append(preds.softmax(dim=1).detach().cpu().numpy())
-        self.gt_coords += gt_coords
+        preds_softmax = preds.softmax(dim=1).detach().cpu().numpy()
+        for pred_softmax, gt_coord in zip(preds_softmax, gt_coords):
+            gt_coord = np.array(gt_coord)
+            pred_coord, pred_score = find_mitotic_cells_from_heatmap(
+                pred_softmax, 
+                min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
+            )
+            num_preds = len(pred_coord)
+            num_gt = len(gt_coord)
+
+            # Calculate number of TP and FP
+            if num_preds == 0:
+                num_tp, num_fp = 0, 0
+            elif num_gt == 0:
+                num_tp, num_fp = 0, num_preds
+            else:
+                num_tp, num_fp = compute_tp_and_fp(
+                    pred_coord, 
+                    pred_score, 
+                    gt_coord, 
+                    MITOTIC_CELL_DISTANCE_CUT_OFF,
+                )
+
+            self.global_num_gt.append(num_gt)
+            self.global_num_tp.append(num_tp)
+            self.global_num_fp.append(num_fp)
 
         return {
             "loss": supervised_loss,
@@ -129,57 +161,26 @@ class FDASegmentationModule(pl.LightningModule):
         }
 
     def on_validation_epoch_end(self):
-        self.predictions = np.concatenate(self.predictions, axis=0)
-        assert len(self.predictions) == len(self.gt_coords)
+        # Gather over GPUs
+        all_num_gt = self.all_gather(self.global_num_gt)
+        all_num_tp = self.all_gather(self.global_num_tp)
+        all_num_fp = self.all_gather(self.global_num_fp)
 
-        global_num_gt = 0
-        global_num_tp = 0
-        global_num_fp = 0
+        # Calculate population GT, TP, FP
+        all_num_gt = np.sum([n.cpu().numpy() for n in all_num_gt])
+        all_num_tp = np.sum([n.cpu().numpy() for n in all_num_tp])
+        all_num_fp = np.sum([n.cpu().numpy() for n in all_num_fp])
 
-        for i in range(len(self.predictions)):
-            # Collect num GT
-            gt_coords = np.array(self.gt_coords[i])
-            num_gt = len(gt_coords)
-            global_num_gt += num_gt
+        # Calculate metrics
+        precision, recall, f1 = compute_precision_recall_f1(all_num_gt, all_num_tp, all_num_fp)
+        self.log("Precision", round(100 * precision, 2), sync_dist=True)
+        self.log("Recall", round(100 * recall, 2), sync_dist=True)
+        self.log("F1", round(100 * f1, 2), sync_dist=True)
 
-            # Find mitotic cells from prediction heatmap
-            pred = self.predictions[i]
-            pred_coords, pred_scores = find_mitotic_cells_from_heatmap(
-                pred, 
-                min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
-            )
-            num_preds = len(pred_coords)
-
-            # Calculate TP and FP
-            if num_preds == 0:
-                # If no preidcted cells, continue
-                continue
-            elif num_gt == 0:
-                # If no GT cells, all predicted cells are False Positive
-                global_num_fp += num_preds
-                continue
-            else:
-                num_tp, num_fp = compute_tp_and_fp(
-                    pred_coords, 
-                    pred_scores, 
-                    gt_coords, 
-                    MITOTIC_CELL_DISTANCE_CUT_OFF,
-                )
-                global_num_tp += num_tp
-                global_num_fp += num_fp
-
-        precision, recall, f1 = compute_precision_recall_f1(
-            global_num_gt, 
-            global_num_tp, 
-            global_num_fp,
-        )
-        self.log("Precision", round(precision, 4), sync_dist=True)
-        self.log("Recall", round(recall, 4), sync_dist=True)
-        self.log("F1", round(f1, 4), sync_dist=True)
-
-        # Refresh for next evaluation
-        self.predictions = []
-        self.gt_coords = []
+        # Refresh cell counts for next evaluation
+        self.global_num_gt = []
+        self.global_num_tp = []
+        self.global_num_fp = []
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)

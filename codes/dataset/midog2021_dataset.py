@@ -11,7 +11,6 @@ from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset, DataLoader, default_collate
 from omegaconf import ListConfig
 
-from codes.constant import MITOTIC_CELL_CLS_IDX
 from codes.fda import fda_augmentation
 from codes.utils import read_img, parse_wkt_annotation, draw_segmentation_label
 
@@ -51,17 +50,25 @@ class MIDOG2021Dataset(Dataset):
         self.setup_indices()
     
     def setup_indices(self):
-        self.indices_with_zero_annot = []
-        self.indices_with_at_least_one_annot = []
+        self.indices_no_cell = []
+        self.indices_only_mf = []
+        self.indices_only_nmf = []
+        self.indices_both_mf_nmf = []
 
         for i, img_path in enumerate(self.img_paths):
             meta_key = img_path.replace(".jpg", "")
             metadata = self.metadata[meta_key]
-            num_valid_cells = metadata["num_mitotic_figure"] + metadata["num_non_mitotic_figure"]
-            if num_valid_cells == 0:
-                self.indices_with_zero_annot.append(i)
-            else:
-                self.indices_with_at_least_one_annot.append(i)
+            num_mf = metadata["num_mitotic_figure"]
+            num_nmf = metadata["num_non_mitotic_figure"]
+
+            if num_mf == 0 and num_nmf == 0:  # no annotated cell
+                self.indices_no_cell.append(i)
+            elif num_mf > 0 and num_nmf == 0:  # only mitotic-figure exist
+                self.indices_only_mf.append(i)
+            elif num_mf == 0 and num_nmf > 0:  # only non-mitotic-figure exist
+                self.indices_only_nmf.append(i)
+            else:  # both exists
+                self.indices_both_mf_nmf.append(i)
 
     def get_img_paths(self, root_path):
         img_paths = []
@@ -149,12 +156,6 @@ class MIDOG2021Dataset(Dataset):
 
         # Create a segmentation label
         seg_label = draw_segmentation_label(img, gt_coords, gt_categories, self.radius)
-
-        # Exclude non-mitotic cells from GT points, which are not used for metric computation.
-        gt_coords = [
-            gt_coord for gt_coord, gt_cls in zip(gt_coords, gt_categories) 
-            if gt_cls == MITOTIC_CELL_CLS_IDX
-        ]
 
         # Output of dataset
         sample = {"img": img, "seg_label": seg_label,  "gt_coords": gt_coords}
