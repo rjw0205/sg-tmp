@@ -12,6 +12,9 @@ from codes.framework.framework import FDASegmentationModule
 from codes.loss.dice import DiceLoss
 from codes.logger.incl import InclLogger
 from lightning.pytorch import loggers as pl_loggers
+from codes.constant import MITOTIC_CELL_DISTANCE_CUT_OFF
+from codes.utils import find_mitotic_cells_from_heatmap
+from tqdm import tqdm
 
 
 @hydra.main(config_path="config", config_name="config")
@@ -77,6 +80,29 @@ def main(cfg: DictConfig):
         callbacks=checkpoint_callback,
     )
     trainer.fit(lightning_model)
+
+    # Save visualization with best model
+    if trainer.is_global_zero:
+        # Load best model
+        best_model_path = f"{trainer._default_root_dir}/checkpoints/best.ckpt"
+        best_state_dict = torch.load(best_model_path, weights_only=True)["state_dict"]
+        best_state_dict = {k.replace("model.", ""): v for k, v in best_state_dict.items()}
+        model.load_state_dict(best_state_dict, strict=True)
+        model.eval()
+        print(f"Best model loaded from: {best_model_path}")
+
+        # Save visualization examples
+        with torch.no_grad():
+            print("Saving visualization ...")
+            for sample in tqdm(val_dataset):
+                img = sample["img"]
+                pred = model(img.unsqueeze(dim=0))["out"].squeeze(dim=0)
+                pred_softmax = pred.softmax(dim=0).detach().cpu().numpy()
+                pred_coord, pred_score = find_mitotic_cells_from_heatmap(
+                    pred_softmax, 
+                    min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
+                )
+                gt_coords = sample["gt_coords"]
 
 
 if __name__ == "__main__":
