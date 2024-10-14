@@ -41,8 +41,8 @@ def main(cfg: DictConfig):
     model.aux_classifier = None
 
     # Setup loss
-    supervised_loss = DiceLoss()
-    consistency_loss = DiceLoss()
+    supervised_loss = DiceLoss(gamma=cfg.loss.gamma)
+    consistency_loss = DiceLoss(gamma=cfg.loss.gamma)
 
     # Instantiate lightning module
     lightning_model = FDASegmentationModule(
@@ -55,6 +55,7 @@ def main(cfg: DictConfig):
         supervised_loss=supervised_loss, 
         consistency_loss=consistency_loss, 
         lr=cfg.optimizer.lr,
+        weight_decay=cfg.optimizer.weight_decay,
     )
 
     # Define the loggers
