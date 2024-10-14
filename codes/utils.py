@@ -6,6 +6,8 @@ from skimage import draw
 from PIL import Image
 from skimage.feature import peak_local_max
 from codes.constant import MITOTIC_CELL_CLS_IDX
+from torchvision import transforms
+from PIL import Image, ImageDraw
 
 
 def save_img_from_numpy_array(arr, save_name):
@@ -216,3 +218,50 @@ def compute_precision_recall_f1(num_gt, num_tp, num_fp, eps=1e-7):
     recall = num_tp / (num_gt + eps)
     f1 = 2 * precision * recall / (precision + recall + eps)
     return precision, recall, f1
+
+
+def save_visualization(img, pred_coords, gt_coords, save_path):
+    """
+    img: torch.tensor
+        Image tensor with shape (3, H, W) with RGB channel order.
+
+    pred_coords: np.ndarray
+        List of (y, x) coordinates which are predictions.
+
+    gt_coords: np.ndarray
+        List of (y, x) coordinates which are GT.
+
+    save_path: str
+        Path to save a visualization.
+    """
+    radius = 10
+    margin = 30
+
+    # Create original image
+    org_img = transforms.ToPILImage()(img)
+
+    # Create prediction overlayed image
+    pred_img = org_img.copy()
+    pred_draw = ImageDraw.Draw(pred_img)
+    for pred_coord in pred_coords:
+        pred_y, pred_x = pred_coord
+        left_top = (pred_x - radius, pred_y - radius)
+        right_bot = (pred_x + radius, pred_y + radius)
+        pred_draw.ellipse([left_top, right_bot], outline="red", width=3)
+
+    # Create prediction overlayed image
+    gt_img = org_img.copy()
+    gt_draw = ImageDraw.Draw(gt_img)
+    for gt_coord in gt_coords:
+        gt_y, gt_x = gt_coord
+        left_top = (gt_x - radius, gt_y - radius)
+        right_bot = (gt_x + radius, gt_y + radius)
+        gt_draw.ellipse([left_top, right_bot], outline="red", width=3)
+
+    # Concatenate and save a final image
+    width, height = org_img.size
+    final_image = Image.new("RGB", (width * 3 + margin * 2, height), (255, 255, 255))
+    final_image.paste(org_img, (0, 0))
+    final_image.paste(pred_img, (width + margin, 0))
+    final_image.paste(gt_img, (width * 2 + margin * 2, 0))
+    final_image.save(save_path)

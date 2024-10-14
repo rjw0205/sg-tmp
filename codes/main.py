@@ -1,5 +1,7 @@
+import os
 import hydra
 import torch
+import numpy as np
 from torchvision.models.segmentation import (
     deeplabv3_resnet50, 
     DeepLabV3_ResNet50_Weights, 
@@ -13,7 +15,7 @@ from codes.loss.dice import DiceLoss
 from codes.logger.incl import InclLogger
 from lightning.pytorch import loggers as pl_loggers
 from codes.constant import MITOTIC_CELL_DISTANCE_CUT_OFF
-from codes.utils import find_mitotic_cells_from_heatmap
+from codes.utils import find_mitotic_cells_from_heatmap, save_visualization
 from tqdm import tqdm
 
 
@@ -94,15 +96,19 @@ def main(cfg: DictConfig):
         # Save visualization examples
         with torch.no_grad():
             print("Saving visualization ...")
-            for sample in tqdm(val_dataset):
+            vis_path = f"{trainer._default_root_dir}/vis"
+            os.makedirs(vis_path, exist_ok=True)
+            for i, sample in enumerate(tqdm(val_dataset)):
                 img = sample["img"]
                 pred = model(img.unsqueeze(dim=0))["out"].squeeze(dim=0)
                 pred_softmax = pred.softmax(dim=0).detach().cpu().numpy()
-                pred_coord, pred_score = find_mitotic_cells_from_heatmap(
+                pred_coords, _ = find_mitotic_cells_from_heatmap(
                     pred_softmax, 
                     min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
                 )
-                gt_coords = sample["gt_coords"]
+                gt_coords = np.array(sample["gt_coords"])
+                save_path = f"{vis_path}/{i}.jpg"
+                save_visualization(img, pred_coords, gt_coords, save_path)
 
 
 if __name__ == "__main__":
