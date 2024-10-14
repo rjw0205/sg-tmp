@@ -1,5 +1,6 @@
 defaults:
   - dataset: default_dataset
+  - loss: default_loss
   - model: default_model
   - optimizer: default_optimizer
   - trainer: default_trainer

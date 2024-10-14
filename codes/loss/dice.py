@@ -74,7 +74,7 @@ class DiceLoss(nn.Module):
         Returns:
             torch.Tensor: Dice loss after applying focal coefficient.
         """
-        if torch.isclose(torch.tensor(self.gamma), torch.tensor(1.0)):
+        if torch.isclose(torch.tensor(self.gamma), torch.tensor(1.0).long()):
             return dice_loss
 
         # Apply focal coefficient

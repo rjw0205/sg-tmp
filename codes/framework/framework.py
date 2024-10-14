@@ -25,6 +25,7 @@ class FDASegmentationModule(pl.LightningModule):
         supervised_loss, 
         consistency_loss, 
         lr,
+        weight_decay,
     ):
         super(FDASegmentationModule, self).__init__()
         self.model = model
@@ -36,6 +37,7 @@ class FDASegmentationModule(pl.LightningModule):
         self.supervised_loss = supervised_loss
         self.consistency_loss = consistency_loss
         self.lr = lr
+        self.weight_decay = weight_decay
 
         # Store number of GT, TP, FP per image for evaluation
         self.global_num_gt = []
@@ -183,5 +185,9 @@ class FDASegmentationModule(pl.LightningModule):
         self.global_num_fp = []
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(
+            self.model.parameters(), 
+            lr=self.lr, 
+            weight_decay=self.weight_decay,
+        )
         return optimizer
