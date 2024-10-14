@@ -6,6 +6,7 @@ from torchvision.models.segmentation import (
 )
 from omegaconf import DictConfig
 from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint
 from codes.dataset.midog2021_dataset import MIDOG2021Dataset, midog_collate_fn
 from codes.framework.framework import FDASegmentationModule
 from codes.loss.dice import DiceLoss
@@ -55,6 +56,15 @@ def main(cfg: DictConfig):
     incl_logger = InclLogger()
     tb_logger = pl_loggers.TensorBoardLogger(save_dir="tb_logs/")
 
+    # A callback for saving the best model based on validation metric
+    checkpoint_callback = ModelCheckpoint(
+        dirpath="checkpoints",
+        filename="best",
+        verbose=True,
+        monitor="F1",
+        mode="max",
+    )
+
     # Define the trainer and start training
     trainer = Trainer(
         max_epochs=cfg.trainer.max_epochs,
@@ -64,6 +74,7 @@ def main(cfg: DictConfig):
         logger=[incl_logger, tb_logger],
         accelerator="gpu",
         num_sanity_val_steps=0,
+        callbacks=checkpoint_callback,
     )
     trainer.fit(lightning_model)
 
