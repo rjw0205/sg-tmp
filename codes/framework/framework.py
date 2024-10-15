@@ -89,7 +89,7 @@ class FDASegmentationModule(pl.LightningModule):
         )
     
     def forward(self, x):
-        return self.model(x)["out"]
+        return self.model(x)["out"].softmax(dim=1)
 
     def training_step(self, batch, batch_idx):
         imgs_dict, seg_labels, gt_coords = batch
@@ -130,12 +130,11 @@ class FDASegmentationModule(pl.LightningModule):
         self.log("val_supervised_loss", supervised_loss, sync_dist=True, batch_size=self.batch_size)
 
         # Collect predictions and GT for metric calculation
-        preds_softmax = preds.softmax(dim=1).detach().cpu().numpy()
-        for pred_softmax, gt_coord in zip(preds_softmax, gt_coords):
+        preds = preds.detach().cpu().numpy()
+        for pred, gt_coord in zip(preds, gt_coords):
             gt_coord = np.array(gt_coord)
             pred_coord, pred_score = find_mitotic_cells_from_heatmap(
-                pred_softmax, 
-                min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
+                pred, min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
             )
             num_preds = len(pred_coord)
             num_gt = len(gt_coord)

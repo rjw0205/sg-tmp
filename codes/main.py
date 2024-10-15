@@ -41,8 +41,8 @@ def main(cfg: DictConfig):
     model.aux_classifier = None
 
     # Setup loss
-    supervised_loss = DiceLoss(gamma=cfg.loss.gamma)
-    consistency_loss = DiceLoss(gamma=cfg.loss.gamma)
+    supervised_loss = DiceLoss(p=1.0, gamma=cfg.loss.gamma)
+    consistency_loss = DiceLoss(p=1.0, gamma=cfg.loss.gamma)
 
     # Instantiate lightning module
     lightning_model = FDASegmentationModule(
@@ -101,11 +101,10 @@ def main(cfg: DictConfig):
             os.makedirs(vis_path, exist_ok=True)
             for i, sample in enumerate(tqdm(val_dataset)):
                 img = sample["img"]
-                pred = model(img.unsqueeze(dim=0))["out"].squeeze(dim=0)
-                pred_softmax = pred.softmax(dim=0).detach().cpu().numpy()
+                pred = model(img.unsqueeze(dim=0))["out"].softmax(dim=1).squeeze(dim=0)
+                pred = pred.detach().cpu().numpy()
                 pred_coords, _ = find_mitotic_cells_from_heatmap(
-                    pred_softmax, 
-                    min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
+                    pred, min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
                 )
                 gt_coords = np.array(sample["gt_coords"])
                 save_path = f"{vis_path}/{i}.jpg"
