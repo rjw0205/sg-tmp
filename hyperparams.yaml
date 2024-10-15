@@ -1,0 +1,12 @@
+incl_params:
+  name: "grid-search" # The prefix of job ID
+  project: "sg-tmp"
+  gpu_type: "t4"
+  gpu_num: 4
+  machine_type: "n1-standard-4"
+  docker_image: ""
+exp_params:
+  learning_rate: [0.01, 0.001, 0.0001]
+  batch_size: [32, 64, 128]
+  optimizer: ['adam', 'sgd']
+  epochs: 50
