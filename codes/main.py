@@ -56,7 +56,9 @@ def main(cfg: DictConfig):
         consistency_loss=consistency_loss, 
         lr=cfg.optimizer.lr,
         weight_decay=cfg.optimizer.weight_decay,
+        scheduler=cfg.optimizer.scheduler,
         per_class_loss_weight=cfg.loss.per_class_loss_weight,
+        max_epoch=cfg.trainer.max_epochs,
     )
 
     # Define the loggers
