@@ -19,6 +19,11 @@ from codes.utils import find_mitotic_cells_from_heatmap, save_visualization
 from tqdm import tqdm
 
 
+CHECKPOINT_DIR = "checkpoints"
+BEST_CHECKPOINT_FILENAME = "best"
+LAST_CHECKPOINT_FILENAME = "last"
+
+
 @hydra.main(config_path="config", config_name="config")
 def main(cfg: DictConfig):
     # Setup dataset
@@ -63,12 +68,19 @@ def main(cfg: DictConfig):
     tb_logger = pl_loggers.TensorBoardLogger(save_dir="tb_logs/")
 
     # A callback for saving the best model based on validation metric
-    checkpoint_callback = ModelCheckpoint(
-        dirpath="checkpoints",
-        filename="best",
+    best_checkpoint_callback = ModelCheckpoint(
+        dirpath=CHECKPOINT_DIR,
+        filename=BEST_CHECKPOINT_FILENAME,
         verbose=True,
         monitor="F1",
         mode="max",
+    )
+
+    # A callback for saving the last model
+    last_checkpoint_callback = ModelCheckpoint(
+        dirpath=CHECKPOINT_DIR,
+        filename=LAST_CHECKPOINT_FILENAME,
+        verbose=False,
     )
 
     # Define the trainer and start training
@@ -80,14 +92,14 @@ def main(cfg: DictConfig):
         logger=[incl_logger, tb_logger],
         accelerator="gpu",
         num_sanity_val_steps=0,
-        callbacks=checkpoint_callback,
+        callbacks=[best_checkpoint_callback, last_checkpoint_callback],
     )
-    trainer.fit(lightning_model)
+    trainer.fit(lightning_model, ckpt_path=f"{CHECKPOINT_DIR}/{LAST_CHECKPOINT_FILENAME}.ckpt")
 
     # Save visualization with best model
     if cfg.trainer.save_vis and trainer.is_global_zero:
         # Load best model
-        best_model_path = f"{trainer._default_root_dir}/checkpoints/best.ckpt"
+        best_model_path = f"{trainer._default_root_dir}/{CHECKPOINT_DIR}/{BEST_CHECKPOINT_FILENAME}.ckpt"
         best_state_dict = torch.load(best_model_path, weights_only=True)["state_dict"]
         best_state_dict = {k.replace("model.", ""): v for k, v in best_state_dict.items()}
         model.load_state_dict(best_state_dict, strict=True)
