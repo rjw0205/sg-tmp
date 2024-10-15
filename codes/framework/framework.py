@@ -11,6 +11,8 @@ from codes.utils import (
     compute_precision_recall_f1, 
 )
 from codes.constant import MITOTIC_CELL_DISTANCE_CUT_OFF
+from torch.optim import Adam
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 
 class FDASegmentationModule(pl.LightningModule):
@@ -26,7 +28,9 @@ class FDASegmentationModule(pl.LightningModule):
         consistency_loss, 
         lr,
         weight_decay,
+        scheduler,
         per_class_loss_weight,
+        max_epoch,
     ):
         super(FDASegmentationModule, self).__init__()
         self.model = model
@@ -39,7 +43,9 @@ class FDASegmentationModule(pl.LightningModule):
         self.consistency_loss = consistency_loss
         self.lr = lr
         self.weight_decay = weight_decay
+        self.scheduler = scheduler
         self.per_class_loss_weight = per_class_loss_weight
+        self.max_epoch = max_epoch
 
         # Store number of GT, TP, FP per image for evaluation
         self.global_num_gt = []
@@ -112,6 +118,10 @@ class FDASegmentationModule(pl.LightningModule):
         # Log loss
         self.log("train_supervised_loss", supervised_loss, sync_dist=True, batch_size=self.batch_size)
         self.log("train_consistency_loss", consistency_loss, sync_dist=True, batch_size=self.batch_size)
+
+        # Log learning rate
+        lr = self.optimizers().param_groups[0]["lr"]
+        self.log("LR", lr, on_step=True, logger=True)
 
         # Return losses
         return {
@@ -186,9 +196,11 @@ class FDASegmentationModule(pl.LightningModule):
         self.global_num_fp = []
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
-            self.model.parameters(), 
-            lr=self.lr, 
-            weight_decay=self.weight_decay,
-        )
-        return optimizer
+        optimizer = Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        if self.scheduler == "plain":
+            return optimizer
+        elif self.scheduler == "cosine":
+            scheduler = CosineAnnealingLR(optimizer, T_max=self.max_epoch)
+            return {"optimizer": optimizer, "lr_scheduler": scheduler}
+        else:
+            raise NotImplementedError()
