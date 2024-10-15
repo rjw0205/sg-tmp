@@ -1,1 +1,2 @@
 gamma: 1
+per_class_loss_weight: [1.0, 1.0]  # BG, FG

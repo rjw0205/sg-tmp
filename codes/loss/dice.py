@@ -80,7 +80,7 @@ class DiceLoss(nn.Module):
         # Apply focal coefficient
         return torch.pow(dice_loss, 1.0 / self.gamma)
 
-    def forward(self, predictions, targets):
+    def forward(self, predictions, targets, per_class_loss_weight):
         """
         Forward pass to compute the Dice loss between predictions and targets.
 
@@ -111,6 +111,10 @@ class DiceLoss(nn.Module):
 
         # Apply focal coefficient to dice loss
         focal_dice_loss = self._apply_focal_coefficient(dice_loss)
+
+        # Apply weights
+        class_weights = torch.tensor(per_class_loss_weight).cuda()
+        focal_dice_loss *= class_weights
 
         # Return the mean loss across the channels
         return focal_dice_loss.mean()

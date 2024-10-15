@@ -26,6 +26,7 @@ class FDASegmentationModule(pl.LightningModule):
         consistency_loss, 
         lr,
         weight_decay,
+        per_class_loss_weight,
     ):
         super(FDASegmentationModule, self).__init__()
         self.model = model
@@ -38,6 +39,7 @@ class FDASegmentationModule(pl.LightningModule):
         self.consistency_loss = consistency_loss
         self.lr = lr
         self.weight_decay = weight_decay
+        self.per_class_loss_weight = per_class_loss_weight
 
         # Store number of GT, TP, FP per image for evaluation
         self.global_num_gt = []
@@ -89,7 +91,7 @@ class FDASegmentationModule(pl.LightningModule):
         )
     
     def forward(self, x):
-        return self.model(x)["out"]
+        return self.model(x)["out"].softmax(dim=1)
 
     def training_step(self, batch, batch_idx):
         imgs_dict, seg_labels, gt_coords = batch
@@ -97,7 +99,7 @@ class FDASegmentationModule(pl.LightningModule):
         # Compute supervised loss
         imgs = imgs_dict["original"]
         preds = self.forward(imgs)
-        supervised_loss = self.supervised_loss(preds, seg_labels)
+        supervised_loss = self.supervised_loss(preds, seg_labels, self.per_class_loss_weight)
 
         # Compute consistency loss
         if "fda" in imgs_dict: 
@@ -124,18 +126,17 @@ class FDASegmentationModule(pl.LightningModule):
         # Compute supervised loss
         imgs = imgs_dict["original"]
         preds = self.forward(imgs)
-        supervised_loss = self.supervised_loss(preds, seg_labels)
+        supervised_loss = self.supervised_loss(preds, seg_labels, self.per_class_loss_weight)
 
         # Log loss
         self.log("val_supervised_loss", supervised_loss, sync_dist=True, batch_size=self.batch_size)
 
         # Collect predictions and GT for metric calculation
-        preds_softmax = preds.softmax(dim=1).detach().cpu().numpy()
-        for pred_softmax, gt_coord in zip(preds_softmax, gt_coords):
+        preds = preds.detach().cpu().numpy()
+        for pred, gt_coord in zip(preds, gt_coords):
             gt_coord = np.array(gt_coord)
             pred_coord, pred_score = find_mitotic_cells_from_heatmap(
-                pred_softmax, 
-                min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
+                pred, min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
             )
             num_preds = len(pred_coord)
             num_gt = len(gt_coord)
