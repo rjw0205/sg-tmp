@@ -26,6 +26,7 @@ class FDASegmentationModule(pl.LightningModule):
         consistency_loss, 
         lr,
         weight_decay,
+        per_class_loss_weight,
     ):
         super(FDASegmentationModule, self).__init__()
         self.model = model
@@ -38,6 +39,7 @@ class FDASegmentationModule(pl.LightningModule):
         self.consistency_loss = consistency_loss
         self.lr = lr
         self.weight_decay = weight_decay
+        self.per_class_loss_weight = per_class_loss_weight
 
         # Store number of GT, TP, FP per image for evaluation
         self.global_num_gt = []
@@ -97,7 +99,7 @@ class FDASegmentationModule(pl.LightningModule):
         # Compute supervised loss
         imgs = imgs_dict["original"]
         preds = self.forward(imgs)
-        supervised_loss = self.supervised_loss(preds, seg_labels)
+        supervised_loss = self.supervised_loss(preds, seg_labels, self.per_class_loss_weight)
 
         # Compute consistency loss
         if "fda" in imgs_dict: 
@@ -124,7 +126,7 @@ class FDASegmentationModule(pl.LightningModule):
         # Compute supervised loss
         imgs = imgs_dict["original"]
         preds = self.forward(imgs)
-        supervised_loss = self.supervised_loss(preds, seg_labels)
+        supervised_loss = self.supervised_loss(preds, seg_labels, self.per_class_loss_weight)
 
         # Log loss
         self.log("val_supervised_loss", supervised_loss, sync_dist=True, batch_size=self.batch_size)
