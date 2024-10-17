@@ -97,7 +97,7 @@ def draw_segmentation_label(img, gt_coords, gt_categories, radius):
     return seg_label
 
 
-def find_mitotic_cells_from_heatmap(arr, min_distance):
+def find_mitotic_cells_from_heatmap(arr, min_distance, max_num_peaks=10):
     """ Find mitotic cells from prediction heatmap.
 
     Parameters
@@ -111,6 +111,9 @@ def find_mitotic_cells_from_heatmap(arr, min_distance):
     min_distance: int
         A minimum distance (pixel) between cells.
 
+    max_num_peaks: int
+        A maximum number of peaks that can exist on an image.
+
     Returns
     ------------
     cell_coords: np.ndarray (N, 2)
@@ -121,20 +124,16 @@ def find_mitotic_cells_from_heatmap(arr, min_distance):
     """
     assert isinstance(arr, np.ndarray)
     assert np.all(np.isclose(np.sum(arr, axis=0), 1.0)), "Input arr should be post-softmax."
+    assert arr.shape[0] == 2, "Currently only support num_classes 2."
 
-    # Use background channel for peak finding
-    bkg = arr[0, :, :]
-    obj = 1.0 - bkg
-
-    # Coords are (y, x) order
-    cell_coords = peak_local_max(obj, min_distance=min_distance)
-    cell_scores = np.max(arr, axis=0)[cell_coords[:, 0], cell_coords[:, 1]]
-    cell_cls = np.argmax(arr, axis=0)[cell_coords[:, 0], cell_coords[:, 1]]
-
-    # Filter out only mitotic cells
-    is_mitotic_cell = (cell_cls == MITOTIC_CELL_CLS_IDX)
-    cell_coords = cell_coords[is_mitotic_cell]
-    cell_scores = cell_scores[is_mitotic_cell]
+    obj = arr[1, :, :]
+    cell_coords = peak_local_max(
+        obj, 
+        min_distance=min_distance, 
+        threshold_abs=0.5, 
+        num_peaks=max_num_peaks,
+    )
+    cell_scores = obj[cell_coords[:, 0], cell_coords[:, 1]]
 
     if len(cell_coords) == 0:
         return np.empty((0, 2)), np.empty((0))
