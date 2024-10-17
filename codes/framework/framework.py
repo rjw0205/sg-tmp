@@ -52,6 +52,11 @@ class FDASegmentationModule(pl.LightningModule):
         self.global_num_tp = []
         self.global_num_fp = []
 
+        # Save hyperparameters
+        self.save_hyperparameters(
+            'lr', 'weight_decay', 'scheduler', 'batch_size', 'per_class_loss_weight'
+        )
+
     def subsample_trn_dataset(self):
         # Subsample indices for training epoch which includes,
         # 1. sample which have 0 annotation 
@@ -108,7 +113,7 @@ class FDASegmentationModule(pl.LightningModule):
         supervised_loss = self.supervised_loss(preds, seg_labels, self.per_class_loss_weight)
 
         # Compute consistency loss
-        if "fda" in imgs_dict: 
+        if "fda" in imgs_dict:
             fda_imgs = imgs_dict["fda"]
             fda_preds = self.forward(fda_imgs)
             consistency_loss = self.consistency_loss(preds, fda_preds)
