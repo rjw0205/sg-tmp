@@ -131,6 +131,7 @@ def find_mitotic_cells_from_heatmap(arr, min_distance, max_num_peaks=10):
         obj, 
         min_distance=min_distance, 
         threshold_abs=0.5, 
+        exclude_border=False, 
         num_peaks=max_num_peaks,
     )
     cell_scores = obj[cell_coords[:, 0], cell_coords[:, 1]]
@@ -219,10 +220,13 @@ def compute_precision_recall_f1(num_gt, num_tp, num_fp, eps=1e-7):
     return precision, recall, f1
 
 
-def save_visualization(img, pred_coords, gt_coords, save_path):
+def save_visualization(img, pred, pred_coords, gt_coords, save_path):
     """
     img: torch.tensor
         Image tensor with shape (3, H, W) with RGB channel order.
+    
+    pred: np.ndarray
+        Model output after softmax (num_class, H, W).
 
     pred_coords: np.ndarray
         List of (y, x) coordinates which are predictions.
@@ -248,6 +252,12 @@ def save_visualization(img, pred_coords, gt_coords, save_path):
         right_bot = (pred_x + radius, pred_y + radius)
         pred_draw.ellipse([left_top, right_bot], outline="red", width=3)
 
+    # Object heatmap
+    assert pred.shape[0] == 2
+    pred_heatmap = (pred[1, :, :] * 255).astype(np.uint8)
+    pred_heatmap = np.stack([pred_heatmap] * 3, axis=-1)
+    pred_heatmap_img = Image.fromarray(pred_heatmap)
+
     # Create prediction overlayed image
     gt_img = org_img.copy()
     gt_draw = ImageDraw.Draw(gt_img)
@@ -259,8 +269,9 @@ def save_visualization(img, pred_coords, gt_coords, save_path):
 
     # Concatenate and save a final image
     width, height = org_img.size
-    final_image = Image.new("RGB", (width * 3 + margin * 2, height), (255, 255, 255))
+    final_image = Image.new("RGB", (width * 4 + margin * 3, height), (255, 255, 255))
     final_image.paste(org_img, (0, 0))
-    final_image.paste(pred_img, (width + margin, 0))
-    final_image.paste(gt_img, (width * 2 + margin * 2, 0))
+    final_image.paste(pred_heatmap_img, (width + margin, 0))
+    final_image.paste(pred_img, (width * 2 + margin * 2, 0))
+    final_image.paste(gt_img, (width * 3 + margin * 3, 0))
     final_image.save(save_path)
