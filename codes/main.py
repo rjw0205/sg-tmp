@@ -21,6 +21,10 @@ from tqdm import tqdm
 
 @hydra.main(config_path="config", config_name="config")
 def main(cfg: DictConfig):
+    # If do FDA, consistency loss weight should be positive number.
+    if cfg.dataset.do_fda:
+        assert cfg.loss.consistency_loss_weight > 0.0
+
     # Setup dataset
     trn_dataset = MIDOG2021Dataset(
         root_path=cfg.dataset.root_path, 
@@ -53,7 +57,8 @@ def main(cfg: DictConfig):
         batch_size=cfg.dataset.batch_size,
         num_workers=cfg.dataset.num_workers,
         supervised_loss=supervised_loss, 
-        consistency_loss=consistency_loss, 
+        consistency_loss=consistency_loss,
+        consistency_loss_weight=cfg.loss.consistency_loss_weight, 
         lr=cfg.optimizer.lr,
         weight_decay=cfg.optimizer.weight_decay,
         scheduler=cfg.optimizer.scheduler,

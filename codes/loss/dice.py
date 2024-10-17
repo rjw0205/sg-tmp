@@ -80,13 +80,14 @@ class DiceLoss(nn.Module):
         # Apply focal coefficient
         return torch.pow(dice_loss, 1.0 / self.gamma)
 
-    def forward(self, predictions, targets, per_class_loss_weight):
+    def forward(self, predictions, targets, per_class_loss_weight=[1.0, 1.0]):
         """
         Forward pass to compute the Dice loss between predictions and targets.
 
         Args:
             predictions (torch.Tensor): Model output of shape (N, C, H, W).
             targets (torch.Tensor): Ground truth labels. Can be of shape (N, H, W) for hard labels or (N, C, H, W) for soft labels.
+            per_class_loss_weight (List): per class weight applied to loss values
 
         Returns:
             torch.Tensor: Calculated Dice loss.
