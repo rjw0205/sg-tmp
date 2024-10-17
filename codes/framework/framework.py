@@ -26,6 +26,7 @@ class FDASegmentationModule(pl.LightningModule):
         num_workers, 
         supervised_loss, 
         consistency_loss, 
+        consistency_loss_weight, 
         lr,
         weight_decay,
         scheduler,
@@ -41,6 +42,7 @@ class FDASegmentationModule(pl.LightningModule):
         self.num_workers = num_workers
         self.supervised_loss = supervised_loss
         self.consistency_loss = consistency_loss
+        self.consistency_loss_weight = consistency_loss_weight
         self.lr = lr
         self.weight_decay = weight_decay
         self.scheduler = scheduler
@@ -130,7 +132,7 @@ class FDASegmentationModule(pl.LightningModule):
 
         # Return losses
         return {
-            "loss": supervised_loss + consistency_loss,
+            "loss": supervised_loss + self.consistency_loss_weight * consistency_loss,
             "supervised_loss": supervised_loss,
             "consistency_loss": consistency_loss,
         }
