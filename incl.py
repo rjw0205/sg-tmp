@@ -27,6 +27,7 @@ def run_experiment(incl_params, hyperparams):
         command.append(f"--{key}")
         command.append(str(value))
     
+    breakpoint()
     job_id = incl_lib.run(
         script=" ".join(command),
         **incl_params,
@@ -57,7 +58,7 @@ def print_jobs(jobs):
         sys.stdout.write(f"Job ID: {job_id} / Status: {status} / Hyperparams: {hyperparams}\n")
 
     # Ensure output is flushed immediately
-    sys.stdout.flush()   
+    sys.stdout.flush()
 
 
 def wait_for_jobs(jobs):
@@ -67,10 +68,10 @@ def wait_for_jobs(jobs):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, required=True)
+    parser.add_argument("--param_path", type=str, required=True)
     args = parser.parse_args()
 
-    params = load_parameters(args.incl_params)
+    params = load_parameters(args.param_path)
     incl_params = params["incl_params"]
     exp_params = params["exp_params"]
 

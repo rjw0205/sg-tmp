@@ -6,7 +6,8 @@ incl_params:
   machine_type: "n1-standard-4"
   docker_image: "lunit/sg:latest"
 exp_params:
-  learning_rate: [0.01, 0.001, 0.0001]
-  batch_size: [32, 64, 128]
-  optimizer: ['adam', 'sgd']
-  epochs: 50
+  optimizer.lr: [0.0005, 0.0002, 0.0001, 0.00005]
+  optimizer.scheduler: ['cosine']
+  loss.per_class_loss_weight: [[1.0,1.0], [1.0,2.0]]
+  dataset.batch_size: [8]
+  trainer.max_epochs: [1]
