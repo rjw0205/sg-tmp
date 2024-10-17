@@ -93,10 +93,10 @@ def main(cfg: DictConfig):
     trainer.fit(lightning_model)
 
     # Save visualization with best model
-    if cfg.trainer.save_vis and trainer.is_global_zero:
+    if cfg.trainer.num_save_vis > 0 and trainer.is_global_zero:
         # Load best model
         best_model_path = f"{trainer._default_root_dir}/checkpoints/best.ckpt"
-        best_state_dict = torch.load(best_model_path, weights_only=True)["state_dict"]
+        best_state_dict = torch.load(best_model_path)["state_dict"]
         best_state_dict = {k.replace("model.", ""): v for k, v in best_state_dict.items()}
         model.load_state_dict(best_state_dict, strict=True)
         model.eval()
@@ -107,7 +107,11 @@ def main(cfg: DictConfig):
             print("Saving visualization ...")
             vis_path = f"{trainer._default_root_dir}/vis"
             os.makedirs(vis_path, exist_ok=True)
+            
             for i, sample in enumerate(tqdm(val_dataset)):
+                if i >= num_save_vis:
+                    break
+
                 img = sample["img"]
                 pred = model(img.unsqueeze(dim=0))["out"].softmax(dim=1).squeeze(dim=0)
                 pred = pred.detach().cpu().numpy()
@@ -115,8 +119,8 @@ def main(cfg: DictConfig):
                     pred, min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
                 )
                 gt_coords = np.array(sample["gt_coords"])
-                save_path = f"{vis_path}/{i}.jpg"
-                save_visualization(img, pred_coords, gt_coords, save_path)
+                save_path = f"{vis_path}/{i}_pred_{len(pred_coords)}_GT_{len(gt_coords)}.jpg"
+                save_visualization(img, pred, pred_coords, gt_coords, save_path)
 
 
 if __name__ == "__main__":
