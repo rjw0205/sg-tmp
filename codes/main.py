@@ -93,7 +93,7 @@ def main(cfg: DictConfig):
     trainer.fit(lightning_model)
 
     # Save visualization with best model
-    if cfg.trainer.save_vis and trainer.is_global_zero:
+    if cfg.trainer.num_save_vis > 0 and trainer.is_global_zero:
         # Load best model
         best_model_path = f"{trainer._default_root_dir}/checkpoints/best.ckpt"
         best_state_dict = torch.load(best_model_path, weights_only=True)["state_dict"]
@@ -107,7 +107,11 @@ def main(cfg: DictConfig):
             print("Saving visualization ...")
             vis_path = f"{trainer._default_root_dir}/vis"
             os.makedirs(vis_path, exist_ok=True)
+            
             for i, sample in enumerate(tqdm(val_dataset)):
+                if i >= num_save_vis:
+                    break
+
                 img = sample["img"]
                 pred = model(img.unsqueeze(dim=0))["out"].softmax(dim=1).squeeze(dim=0)
                 pred = pred.detach().cpu().numpy()
