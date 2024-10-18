@@ -9,10 +9,12 @@ from codes.utils import (
     find_mitotic_cells_from_heatmap, 
     compute_tp_and_fp, 
     compute_precision_recall_f1, 
+    safe_divide, 
 )
 from codes.constant import MITOTIC_CELL_DISTANCE_CUT_OFF
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.distributed import all_gather, get_world_size
 
 
 class FDASegmentationModule(pl.LightningModule):
@@ -49,10 +51,11 @@ class FDASegmentationModule(pl.LightningModule):
         self.per_class_loss_weight = per_class_loss_weight
         self.max_epoch = max_epoch
 
-        # Store number of GT, TP, FP per image for evaluation
+        # Store GT, TP, FP per image for evaluation
         self.global_num_gt = []
-        self.global_num_tp = []
-        self.global_num_fp = []
+        self.global_tp_lst = []
+        self.global_fp_lst = []
+        self.global_score_lst = []
 
         # Save hyperparameters
         self.save_hyperparameters(
@@ -155,52 +158,83 @@ class FDASegmentationModule(pl.LightningModule):
             pred_coord, pred_score = find_mitotic_cells_from_heatmap(
                 pred, min_distance=MITOTIC_CELL_DISTANCE_CUT_OFF,
             )
-            num_preds = len(pred_coord)
-            num_gt = len(gt_coord)
-
-            # Calculate number of TP and FP
-            if num_preds == 0:
-                num_tp, num_fp = 0, 0
-            elif num_gt == 0:
-                num_tp, num_fp = 0, num_preds
-            else:
-                num_tp, num_fp = compute_tp_and_fp(
-                    pred_coord, 
-                    pred_score, 
-                    gt_coord, 
-                    MITOTIC_CELL_DISTANCE_CUT_OFF,
-                )
-
+            num_gt, tp_lst, fp_lst = compute_tp_and_fp(
+                pred_coord, 
+                pred_score, 
+                gt_coord, 
+                MITOTIC_CELL_DISTANCE_CUT_OFF,
+            )
             self.global_num_gt.append(num_gt)
-            self.global_num_tp.append(num_tp)
-            self.global_num_fp.append(num_fp)
+            self.global_tp_lst.extend(tp_lst)
+            self.global_fp_lst.extend(fp_lst)
+            self.global_score_lst.extend(pred_score)
 
         return {
             "loss": supervised_loss,
             "supervised_loss": supervised_loss,
         }
+    
+    def gather_list(self, lst, world_size):
+        # Find maximum length of list over GPUs
+        n = torch.tensor([len(lst)], device=self.device) 
+        gathered_n = [torch.zeros_like(n) for _ in range(world_size)]
+        torch.distributed.all_gather(gathered_n, n)
+        max_n = max([g.item() for g in gathered_n])
+
+        # Pad the local GPU's list to the max length
+        padded_lst = lst + [-1] * (max_n - len(lst))
+        padded_lst = torch.tensor(padded_lst, device=self.device)
+
+        # All gather the padded data across GPUs
+        gathered_lst = [torch.zeros_like(padded_lst) for _ in range(world_size)]
+        torch.distributed.all_gather(gathered_lst, padded_lst)
+        gathered_lst = torch.cat(gathered_lst, dim=0).cpu().tolist()
+
+        # Remove padding (-1)
+        gathered_lst = np.array([g for g in gathered_lst if g!= -1])
+        return gathered_lst
+
 
     def on_validation_epoch_end(self):
-        # Gather over GPUs
-        all_num_gt = self.all_gather(self.global_num_gt)
-        all_num_tp = self.all_gather(self.global_num_tp)
-        all_num_fp = self.all_gather(self.global_num_fp)
+        gathered_num_gt = self.all_gather(self.global_num_gt)
+        gathered_num_gt = np.sum([n.cpu().numpy() for n in gathered_num_gt])
 
-        # Calculate population GT, TP, FP
-        all_num_gt = np.sum([n.cpu().numpy() for n in all_num_gt])
-        all_num_tp = np.sum([n.cpu().numpy() for n in all_num_tp])
-        all_num_fp = np.sum([n.cpu().numpy() for n in all_num_fp])
+        world_size = get_world_size()
+        gathered_tp_lst = self.gather_list(self.global_tp_lst, world_size)
+        gathered_fp_lst = self.gather_list(self.global_fp_lst, world_size)
+        gathered_score_lst = self.gather_list(self.global_score_lst, world_size)
 
-        # Calculate metrics
-        precision, recall, f1 = compute_precision_recall_f1(all_num_gt, all_num_tp, all_num_fp)
-        self.log("Precision", round(100 * precision, 2), sync_dist=True)
-        self.log("Recall", round(100 * recall, 2), sync_dist=True)
-        self.log("F1", round(100 * f1, 2), sync_dist=True)
+        sorted_idx = np.argsort(-gathered_score_lst)
+        sorted_tp = gathered_tp_lst[sorted_idx]
+        sorted_fp = gathered_fp_lst[sorted_idx]
+        sorted_score = gathered_score_lst[sorted_idx]
+        
+        tp = np.cumsum(sorted_tp)
+        fp = np.cumsum(sorted_fp)
+        rec = safe_divide(tp, gathered_num_gt)
+        prec = safe_divide(tp, tp + fp)
+
+        mrec = np.concatenate(([0.0], rec, [1.0]))
+        mpre = np.concatenate(([1.0], prec, [0.0]))
+        mscore = np.concatenate(([1.0], sorted_score, [0.0]))
+        f1 = safe_divide(2 * (mpre * mrec), (mpre + mrec))
+
+        max_arg = np.argmax(f1)
+        threshold = mscore[max_arg]
+        max_f1 = f1[max_arg]
+        rec_at_max = mrec[max_arg]
+        pre_at_max = mpre[max_arg]
+
+        self.log("Precision", round(100 * pre_at_max, 2), sync_dist=True)
+        self.log("Recall", round(100 * rec_at_max, 2), sync_dist=True)
+        self.log("F1", round(100 * max_f1, 2), sync_dist=True)
+        self.log("Threshold", round(threshold, 4), sync_dist=True)
 
         # Refresh cell counts for next evaluation
         self.global_num_gt = []
-        self.global_num_tp = []
-        self.global_num_fp = []
+        self.global_tp_lst = []
+        self.global_fp_lst = []
+        self.global_score_lst = []
 
     def configure_optimizers(self):
         optimizer = Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
