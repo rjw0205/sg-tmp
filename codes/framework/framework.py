@@ -1,3 +1,4 @@
+import math
 import random
 import torch
 import numpy as np
@@ -59,7 +60,8 @@ class FDASegmentationModule(pl.LightningModule):
 
         # Save hyperparameters
         self.save_hyperparameters(
-            'lr', 'weight_decay', 'scheduler', 'batch_size', 'per_class_loss_weight'
+            'lr', 'weight_decay', 'scheduler', 'batch_size', 
+            'consistency_loss_weight', 'per_class_loss_weight',
         )
 
     def subsample_trn_dataset(self):
@@ -196,19 +198,26 @@ class FDASegmentationModule(pl.LightningModule):
 
 
     def on_validation_epoch_end(self):
+        # Gather num GT over GPUs
         gathered_num_gt = self.all_gather(self.global_num_gt)
         gathered_num_gt = np.sum([n.cpu().numpy() for n in gathered_num_gt])
 
+        # Gather TP, FP, score over GPUs
         world_size = get_world_size()
         gathered_tp_lst = self.gather_list(self.global_tp_lst, world_size)
         gathered_fp_lst = self.gather_list(self.global_fp_lst, world_size)
         gathered_score_lst = self.gather_list(self.global_score_lst, world_size)
 
+        # Exclude Nan (need to debug where this come from)
+        gathered_score_lst = np.array([s for s in gathered_score_lst if not math.isnan(s)])
+        assert len(gathered_tp_lst) == len(gathered_fp_lst) == len(gathered_score_lst)
+
+        # Sort by score
         sorted_idx = np.argsort(-gathered_score_lst)
         sorted_tp = gathered_tp_lst[sorted_idx]
         sorted_fp = gathered_fp_lst[sorted_idx]
         sorted_score = gathered_score_lst[sorted_idx]
-        
+
         tp = np.cumsum(sorted_tp)
         fp = np.cumsum(sorted_fp)
         rec = safe_divide(tp, gathered_num_gt)

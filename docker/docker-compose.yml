@@ -13,6 +13,7 @@ services:
       - /storage4:/storage4 # TODO: Should be removed
       - /storage5:/storage5 # TODO: Should be removed
       - /storage6:/storage6 # TODO: Should be removed
+      - /storage-seoul-11:/storage-seoul-11 # TODO: Should be removed
     network_mode: "host"
     ipc: "host"
     working_dir: /workspace
