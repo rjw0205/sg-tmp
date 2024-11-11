@@ -6,3 +6,7 @@ albumentations
 hydra-core
 lightning
 tensorboard
+plotly
+pandas
+--extra-index-url=https://pypi.nvidia.com
+cuml-cu12==24.10.*
