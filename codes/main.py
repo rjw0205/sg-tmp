@@ -17,6 +17,7 @@ from lightning.pytorch import loggers as pl_loggers
 from codes.constant import MITOTIC_CELL_DISTANCE_CUT_OFF
 from codes.utils import find_mitotic_cells_from_heatmap, save_visualization
 from tqdm import tqdm
+from datetime import datetime
 
 
 @hydra.main(config_path="config", config_name="config")
@@ -24,6 +25,17 @@ def main(cfg: DictConfig):
     # If do FDA, consistency loss weight should be positive number.
     if cfg.dataset.do_fda:
         assert cfg.loss.consistency_loss_weight > 0.0
+    else:
+        assert cfg.loss.consistency_loss_weight == 0.0
+    
+    # Scanner should not overlap between train and test
+    assert len(cfg.dataset.val_scanners) == 1
+    assert len(cfg.dataset.trn_scanners) == 3
+    assert cfg.dataset.val_scanners[0] not in cfg.dataset.trn_scanners
+
+    # Define experiment name
+    timestamp = datetime.now().strftime("%Y-%m-%d/%H-%M-%S")
+    exp_name = f"/workspace/outputs/val_{cfg.dataset.val_scanners[0]}/{timestamp}"
 
     # Setup dataset
     trn_dataset = MIDOG2021Dataset(
@@ -68,11 +80,11 @@ def main(cfg: DictConfig):
 
     # Define the loggers
     incl_logger = InclLogger()
-    tb_logger = pl_loggers.TensorBoardLogger(save_dir="tb_logs/")
+    tb_logger = pl_loggers.TensorBoardLogger(save_dir=f"{exp_name}/tb_logs/")
 
     # A callback for saving the best model based on validation metric
     checkpoint_callback = ModelCheckpoint(
-        dirpath="checkpoints",
+        dirpath=f"{exp_name}/checkpoints",
         filename="best",
         verbose=True,
         monitor="F1",
@@ -81,6 +93,7 @@ def main(cfg: DictConfig):
 
     # Define the trainer and start training
     trainer = Trainer(
+        default_root_dir=exp_name,
         max_epochs=cfg.trainer.max_epochs,
         check_val_every_n_epoch=cfg.trainer.check_val_every_n_epoch,
         log_every_n_steps=cfg.trainer.log_every_n_steps,
@@ -95,7 +108,7 @@ def main(cfg: DictConfig):
     # Save visualization with best model
     if cfg.trainer.num_save_vis > 0 and trainer.is_global_zero:
         # Load best model
-        best_model_path = f"{trainer._default_root_dir}/checkpoints/best.ckpt"
+        best_model_path = f"{exp_name}/checkpoints/best.ckpt"
         best_state_dict = torch.load(best_model_path)["state_dict"]
         best_state_dict = {k.replace("model.", ""): v for k, v in best_state_dict.items()}
         model.load_state_dict(best_state_dict, strict=True)
@@ -109,7 +122,7 @@ def main(cfg: DictConfig):
             os.makedirs(vis_path, exist_ok=True)
             
             for i, sample in enumerate(tqdm(val_dataset)):
-                if i >= num_save_vis:
+                if i >= cfg.trainer.num_save_vis:
                     break
 
                 img = sample["img"]

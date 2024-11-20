@@ -10,6 +10,10 @@ from torchvision import transforms
 from PIL import Image, ImageDraw
 
 
+def safe_divide(a, b):
+    return a / np.maximum(b, np.finfo(np.float32).eps)
+
+
 def save_img_from_numpy_array(arr, save_name):
     """ Save image from numpy array (HxWxC)
 
@@ -143,7 +147,7 @@ def find_mitotic_cells_from_heatmap(arr, min_distance, max_num_peaks=10):
 
 
 def compute_tp_and_fp(pred_coords, pred_scores, gt_coords, distance_cut_off):
-    """ Compute TP and FP from given prediction and GT coordinates.
+    """ Given an image and prediction, compute TP and FP detections.
 
     Parameters
     ----------
@@ -161,34 +165,38 @@ def compute_tp_and_fp(pred_coords, pred_scores, gt_coords, distance_cut_off):
 
     Returns
     -------
-    num_tp: int
-        Number of True Positive (TP) detection.
+    num_gt: int
+        Number of GT cells.
 
-    num_fp: int
-        Number of False Positive (FP) detection.
+    tp_lst: List[int]
+        List of 0 or 1, where 1 means a prediction is TP. Length of a list is number of prediction.
+
+    fp_lst: List[int]
+        List of 0 or 1, where 1 means a prediction is FP. Length of a list is number of prediction.
     """
-    num_tp, num_fp = 0, 0
-    num_preds = pred_coords.shape[0]
+    num_gt = len(gt_coords)
+    num_pred = len(pred_coords)
+    tp_lst = [0] * num_pred
 
-    # Compute distance between GT and predicted cells
-    pred_coords = pred_coords.reshape([-1, 1, 2])
-    gt_coords = gt_coords.reshape([1, -1, 2])
-    distance = np.linalg.norm(pred_coords - gt_coords, axis=2)
+    # Matching prediction and GT
+    if num_pred > 0 and num_gt > 0:
+        # Compute distance between GT and predicted cells
+        pred_coords = pred_coords.reshape([-1, 1, 2])
+        gt_coords = gt_coords.reshape([1, -1, 2])
+        distance = np.linalg.norm(pred_coords - gt_coords, axis=2)
 
-    # Start matching from highest confidence predicted cell
-    sorted_pred_indices = np.argsort(-pred_scores)
-    bool_mask = (distance <= distance_cut_off)
-    for pred_idx in sorted_pred_indices:
-        gt_neighbors = bool_mask[pred_idx].nonzero()[0]
-        if len(gt_neighbors) == 0:  # No matching GT --> False Positive
-            num_fp += 1
-        else: # Assign nearest GT --> True Positive
-            gt_idx = min(gt_neighbors, key=lambda gt_idx: distance[pred_idx, gt_idx])
-            num_tp += 1
-            bool_mask[:, gt_idx] = False
+        # Start matching from highest confidence predicted cell
+        sorted_pred_indices = np.argsort(-pred_scores)
+        bool_mask = (distance <= distance_cut_off)
+        for pred_idx in sorted_pred_indices:
+            gt_neighbors = bool_mask[pred_idx].nonzero()[0]
+            if len(gt_neighbors) > 0:  # Matching with nearesd GT
+                gt_idx = min(gt_neighbors, key=lambda gt_idx: distance[pred_idx, gt_idx])
+                tp_lst[pred_idx] = 1
+                bool_mask[:, gt_idx] = False  # Exclude mathecd GT from future matching
 
-    assert num_tp + num_fp == num_preds
-    return num_tp, num_fp
+    fp_lst = [1 - tp for tp in tp_lst]
+    return num_gt, tp_lst, fp_lst
 
 
 def compute_precision_recall_f1(num_gt, num_tp, num_fp, eps=1e-7):
