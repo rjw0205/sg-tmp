@@ -1,4 +1,4 @@
 *.pyc
 lightning_logs
 outputs
-*_features
+features
