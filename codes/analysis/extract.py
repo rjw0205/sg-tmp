@@ -14,7 +14,7 @@ from pytorch_lightning import LightningModule
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import TQDMProgressBar
 
-from codes.analysis.analysis import get_image_paths, get_image_name
+from codes.analysis.figure import get_image_paths, get_image_name
 
 
 class PairedDataset(torch.utils.data.Dataset):
@@ -115,29 +115,14 @@ if __name__ == "__main__":
     data_dir = "/lunit/data/onco/scope_sg/240409"
     scanner_images = get_image_paths(data_dir)
 
-    extractor_return_node = "layer1"
+    extractor_return_node = "layer4"
 
-    folder_name = "io-pan-tissue-9d6cae91-1-5"
-    extractor_state_path = f"/storage6/pp/share/rjw0205/scanner_generalization/paper_submission/incl_download/{folder_name}/best.pth"
-    model = "resnet34"
-    config = {}
-    output_dir = f"features/{folder_name}_{extractor_return_node}_features"
-    normalize_mean = None
-    normalize_std = None
-
-    # extractor_state_path = "bt_rn50_ep200.torch"
-    # model = "resnet50"
-    # config = {}
-    # output_dir = f"features/bt_rn50_ep200_{extractor_return_node}_features"
-    # normalize_mean = [0.70322989, 0.53606487, 0.66096631]
-    # normalize_std = [0.21716536, 0.26081574, 0.20723464]
-
-    # extractor_state_path = None
-    # model = "resnet50"
-    # config = {"weights": "DEFAULT"}
-    # output_dir = f"features/imagenet_rn50_{extractor_return_node}_features"
-    # normalize_mean = (0.485, 0.456, 0.406)
-    # normalize_std = (0.229, 0.224, 0.225)
+    extractor_state_path = None
+    model = "resnet50"
+    config = {"weights": "DEFAULT"}
+    output_dir = f"features/imagenet_rn50_{extractor_return_node}_features"
+    normalize_mean = (0.485, 0.456, 0.406)
+    normalize_std = (0.229, 0.224, 0.225)
 
     dataset = PairedDataset(scanner_images, normalize_mean=normalize_mean, normalize_std=normalize_std)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=7)

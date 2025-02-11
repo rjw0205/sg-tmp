@@ -177,7 +177,7 @@ def plot_analysis(statistics, features, path, color_map, reference_scanner):
     models = ["ImageNet"]
 
     cols = rgb_channels + models
-    fig, axes = plt.subplots(1, len(cols), figsize=(12, 3), constrained_layout=True)
+    fig, axes = plt.subplots(1, len(cols), figsize=(12, 2), constrained_layout=True)
     for i, (col, ax) in enumerate(zip(cols, axes)):
         if i < len(rgb_channels):
             col_data = statistics[statistics["channel"] == col]
@@ -271,12 +271,7 @@ def main(image_dir, feature_dirs, output_dir):
 if __name__ == "__main__":
     image_dir = "/lunit/data/onco/scope_sg/240409"
     feature_dirs = {
-        "LunitSSL": {
-            "Layer1": "features/bt_rn50_ep200_layer1_features",
-            "Layer4": "features/bt_rn50_ep200_layer4_features"
-        },
         "ImageNet": {
-            "Layer1": "features/imagenet_rn50_layer1_features",
             "Layer4": "features/imagenet_rn50_layer4_features"
         }
     }
