@@ -1,6 +1,7 @@
 from typing import Any
 from pathlib import Path
 
+import timm
 import numpy as np
 import torch
 import torch.nn as nn
@@ -23,6 +24,7 @@ class PairedDataset(torch.utils.data.Dataset):
         scanner_images,
         normalize_mean,
         normalize_std,
+        resize_and_crop,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -31,6 +33,9 @@ class PairedDataset(torch.utils.data.Dataset):
         self.data_list = self._build_data_list()
 
         transforms = [v2.ToImage(), v2.ToDtype(torch.float32, scale=True)]
+        if resize_and_crop is not None:
+            transforms.append(v2.Resize(resize_and_crop[0], interpolation=v2.InterpolationMode.BICUBIC))
+            transforms.append(v2.CenterCrop(resize_and_crop[1]))
         if normalize_mean is not None and normalize_std is not None:
             transforms.append(v2.Normalize(mean=normalize_mean, std=normalize_std))
         self.to_tensor = v2.Compose(transforms)
@@ -59,23 +64,13 @@ class PairedDataset(torch.utils.data.Dataset):
         }
 
         return image, metadata
+    
 
-
-class FeatureExtractor(LightningModule):
-    def __init__(
-        self,
-        name: str,
-        config: dict[str, Any],
-        state_path: str,
-        extractor_return_node: str,
-        output_dir: str,
-    ):
+class TorchvisionModel(nn.Module):
+    def __init__(self, model_name, config, state_path, extractor_return_node):
         super().__init__()
 
-        self.output_dir = output_dir
-
-        self.model = get_model(name, **config)
-
+        self.model = get_model(model_name, pretrained=True)
         if state_path is not None:
             state_dict = torch.load(state_path)
             self.model.load_state_dict(state_dict, strict=False)
@@ -86,11 +81,24 @@ class FeatureExtractor(LightningModule):
             train_return_nodes={self.extractor_return_node: self.extractor_return_node},
             eval_return_nodes={self.extractor_return_node: self.extractor_return_node},
         )
+
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.extractor(x)[self.extractor_return_node]
         x = self.avgpool(x)
+        return x
+
+
+class FeatureExtractor(LightningModule):
+    def __init__(self, model: nn.Module, output_dir: str):
+        super().__init__()
+
+        self.model = model
+        self.output_dir = output_dir
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.model(x)
         return x
 
     def predict_step(self, batch, batch_idx):
@@ -115,23 +123,21 @@ if __name__ == "__main__":
     data_dir = "/lunit/data/onco/scope_sg/240409"
     scanner_images = get_image_paths(data_dir)
 
-    extractor_return_node = "layer4"
-
     extractor_state_path = None
-    model = "resnet50"
+    extractor_return_node = "layer4"
+    model_name = "resnet50"
     config = {"weights": "DEFAULT"}
+    model = TorchvisionModel(model_name, config, extractor_state_path, extractor_return_node)
     output_dir = f"features/imagenet_rn50_{extractor_return_node}_features"
     normalize_mean = (0.485, 0.456, 0.406)
     normalize_std = (0.229, 0.224, 0.225)
+    resize_and_crop = None
 
-    dataset = PairedDataset(scanner_images, normalize_mean=normalize_mean, normalize_std=normalize_std)
+    dataset = PairedDataset(scanner_images, normalize_mean=normalize_mean, normalize_std=normalize_std, resize_and_crop=resize_and_crop)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=7)
 
     feature_extractor = FeatureExtractor(
-        name=model,
-        config=config,
-        state_path=extractor_state_path,
-        extractor_return_node=extractor_return_node,
+        model=model,
         output_dir=output_dir
     )
     feature_extractor.eval()

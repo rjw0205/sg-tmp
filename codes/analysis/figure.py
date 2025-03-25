@@ -173,7 +173,7 @@ def reduce_feature(features, target):
 def plot_analysis(statistics, features, path, color_map, reference_scanner):
     rgb_channels = ["R", "G", "B"]
 
-    features = features[features["layer"] == "Layer4"].sort_values(by=["model"])
+    features = features.sort_values(by=["model"])
     models = ["ImageNet"]
 
     cols = rgb_channels + models
@@ -187,7 +187,7 @@ def plot_analysis(statistics, features, path, color_map, reference_scanner):
             col_data = features[features["model"] == col]
             x = f"reduced_feature_0"
             y = f"reduced_feature_1"
-        
+
         sns.kdeplot(
             data=col_data,
             x=x,
@@ -247,19 +247,17 @@ def main(image_dir, feature_dirs, output_dir):
     else:
         feature_space_stat_df = pd.DataFrame()
         feature_space_stat_diff_df = pd.DataFrame()
-        for model, per_layer_feature_dir in feature_dirs.items():
-            for layer, feature_dir in per_layer_feature_dir.items():
-                feature_paths = get_feature_paths(feature_dir)
-                df = load_features(feature_paths)
-                df["model"] = model
-                df["layer"] = layer
+        for model, feature_dir in feature_dirs.items():
+            feature_paths = get_feature_paths(feature_dir)
+            df = load_features(feature_paths)
+            df["model"] = model
 
-                diff_df = calculate_diff_with_reference(df, "feature_name", ["feature"], REFERENCE_SCANNER)
-                diff_df = reduce_feature(diff_df, "feature")
-                feature_space_stat_diff_df = pd.concat([feature_space_stat_diff_df, diff_df], ignore_index=True)
+            diff_df = calculate_diff_with_reference(df, "feature_name", ["feature"], REFERENCE_SCANNER)
+            diff_df = reduce_feature(diff_df, "feature")
+            feature_space_stat_diff_df = pd.concat([feature_space_stat_diff_df, diff_df], ignore_index=True)
 
-                reduced_df = reduce_feature(df, "feature")
-                feature_space_stat_df = pd.concat([feature_space_stat_df, reduced_df], ignore_index=True)
+            reduced_df = reduce_feature(df, "feature")
+            feature_space_stat_df = pd.concat([feature_space_stat_df, reduced_df], ignore_index=True)
 
         feature_space_stat_df.to_csv(feature_space_stat_path, index=False)
         feature_space_stat_diff_df.to_csv(feature_space_stat_diff_path, index=False)
@@ -271,9 +269,7 @@ def main(image_dir, feature_dirs, output_dir):
 if __name__ == "__main__":
     image_dir = "/lunit/data/onco/scope_sg/240409"
     feature_dirs = {
-        "ImageNet": {
-            "Layer4": "features/imagenet_rn50_layer4_features"
-        }
+        "ImageNet": "features/imagenet_rn50_layer4_features"
     }
     figure_dir = "figures"
 
